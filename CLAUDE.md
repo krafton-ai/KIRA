@@ -428,7 +428,7 @@ async def call_agent_name(
     # 3. Options 생성
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
-        model="claude-haiku-4-5@20251001",  # or sonnet-4-5
+        model="haiku",  # or sonnet-4-5
         permission_mode="bypassPermissions",
         allowed_tools=["*"],
         disallowed_tools=[...],

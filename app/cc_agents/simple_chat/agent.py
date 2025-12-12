@@ -155,7 +155,7 @@ async def call_simple_chat(
             "slack": create_slack_mcp_server(),
         },
         system_prompt=system_prompt,
-        model="claude-haiku-4-5@20251001",
+        model="haiku",
         permission_mode="bypassPermissions",
         allowed_tools=[
             "mcp__slack__answer",

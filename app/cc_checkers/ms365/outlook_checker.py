@@ -100,7 +100,7 @@ Lokka MCP (Microsoft 365 MCP)를 사용하여 이메일 목록을 조회하고, 
     try:
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
-            model="claude-haiku-4-5@20251001",
+            model="haiku",
             permission_mode="bypassPermissions",
             allowed_tools=["*"],
             disallowed_tools=[
