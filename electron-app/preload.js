@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld('api', {
   setLanguage: (lang) => ipcRenderer.invoke('set-language', lang),
   getLanguage: () => ipcRenderer.invoke('get-language'),
 
+  // File system
+  openDataFolder: (path) => ipcRenderer.invoke('open-data-folder', path),
+
   // Server logs
   onServerLog: (callback) => {
     ipcRenderer.on('server-log', (_event, data) => callback(data));
