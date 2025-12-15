@@ -61,7 +61,8 @@
     "role": "Role/Position",
     "roleHint": "Describe the bot's role and main responsibilities",
     "dataPath": "Data Storage Path",
-    "dataPathHint": "Location for files and data storage"
+    "dataPathHint": "Location for files and data storage",
+    "openInFinder": "Open in Finder"
   },
   "mcp": {
     "perplexity": "Perplexity",

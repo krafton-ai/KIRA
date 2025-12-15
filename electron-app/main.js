@@ -9,7 +9,7 @@
  * 5. Auto-updater functionality
  */
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 const { spawn, execSync } = require('child_process');
@@ -776,6 +776,29 @@ function registerIPCHandlers() {
 
   ipcMain.handle('get-language', async () => {
     return currentLang;
+  });
+
+  ipcMain.handle('open-data-folder', async (_event, folderPath) => {
+    try {
+      // Expand home directory if path starts with ~
+      let expandedPath = folderPath;
+      if (folderPath.startsWith('~')) {
+        expandedPath = path.join(os.homedir(), folderPath.slice(1));
+      }
+
+      // Create directory if it doesn't exist
+      if (!fs.existsSync(expandedPath)) {
+        fs.mkdirSync(expandedPath, { recursive: true });
+      }
+
+      // Open the folder in Finder/Explorer
+      shell.openPath(expandedPath);
+
+      return { success: true };
+    } catch (error) {
+      log.error('Error opening data folder:', error);
+      return { error: error.message };
+    }
   });
 }
 
