@@ -173,7 +173,12 @@
 
             <div class="form-group">
               <label for="FILESYSTEM_BASE_DIR" data-i18n="bot.dataPath">데이터 저장 경로</label>
-              <input type="text" id="FILESYSTEM_BASE_DIR" placeholder="/Users/yourname/KIRA/data">
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="FILESYSTEM_BASE_DIR" placeholder="/Users/yourname/KIRA/data" style="flex: 1;">
+                <button type="button" class="btn btn-small btn-primary" id="open-data-folder">
+                  <span data-i18n="bot.openInFinder">Finder에서 열기</span>
+                </button>
+              </div>
               <small data-i18n="bot.dataPathHint">파일 및 데이터 저장 위치</small>
             </div>
           </section>

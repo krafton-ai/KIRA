@@ -314,6 +314,24 @@ function setupEventListeners() {
   document.getElementById('startServerBtn').addEventListener('click', startServer);
   document.getElementById('stopServerBtn').addEventListener('click', stopServer);
 
+  // Open data folder button
+  const openDataFolderBtn = document.getElementById('open-data-folder');
+  if (openDataFolderBtn) {
+    openDataFolderBtn.addEventListener('click', async () => {
+      const dataPath = document.getElementById('FILESYSTEM_BASE_DIR').value;
+      if (dataPath) {
+        const result = await window.api.openDataFolder(dataPath);
+        if (result.error) {
+          console.error('Error opening folder:', result.error);
+          // Could show user-friendly error message here
+        }
+      } else {
+        // Path is empty, maybe show a message to user
+        console.log('Please enter a data storage path first');
+      }
+    });
+  }
+
   // MCP checkbox toggles
   Object.keys(mcpMapping).forEach(checkboxId => {
     const checkbox = document.getElementById(checkboxId);
