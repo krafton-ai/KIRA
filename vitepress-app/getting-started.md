@@ -127,16 +127,16 @@ Verify installation:
 claude --version
 ```
 
-### 2. Install mcp-cache (Optional)
+### 2. Install mcp-cache
 
-If you plan to use the **Computer Use (Playwright)** feature, install mcp-cache:
+Install mcp-cache for MCP server optimization:
 
 ```bash
 npm install -g @hapus/mcp-cache
 ```
 
 ::: tip What is mcp-cache?
-mcp-cache reduces startup time and cache size for MCP servers. It's only required for the Computer Use feature.
+mcp-cache reduces startup time and cache size for MCP servers. It's required for GitLab, MS365, Atlassian, Tableau, and Computer Use (Playwright) features.
 :::
 
 ### 3. Log in to Claude

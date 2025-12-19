@@ -130,16 +130,16 @@ sudo chown -R $(whoami) /usr/local/bin
 claude --version
 ```
 
-### 2. mcp-cache 설치 (선택사항)
+### 2. mcp-cache 설치
 
-**Computer Use (Playwright)** 기능을 사용하려면 mcp-cache를 설치하세요:
+MCP 서버 최적화를 위해 mcp-cache를 설치하세요:
 
 ```bash
 npm install -g @hapus/mcp-cache
 ```
 
 ::: tip mcp-cache란?
-mcp-cache는 MCP 서버의 시작 시간과 캐시 크기를 줄여줍니다. Computer Use 기능을 사용할 때만 필요합니다.
+mcp-cache는 MCP 서버의 시작 시간과 캐시 크기를 줄여줍니다. GitLab, MS365, Atlassian, Tableau, Computer Use (Playwright) 기능에 필요합니다.
 :::
 
 ### 3. Claude 로그인
