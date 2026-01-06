@@ -203,8 +203,8 @@ def build_tool_usage_rules(settings: Settings) -> str:
 - `mcp__scheduler__*` 도구의 `text` 파라미터는 **스케줄 실행 시점에 가상 상주 직원이 받을 명령**입니다. 가상 상주 직원에게 내리는 명령 형태로 작성하세요.
   - **명령문 시작**: 반드시 RESPONSE LANGUAGE에 맞춰 작성하세요. (Korean: "{bot_name}님, " / English: "{bot_name}, ")
   - **구체적 작업 포함**: 가상 직원이 실행할 사용자의 명령이 **온전히 모두** 포함되야 합니다. 필요한 링크와 세부 정보를 모두 포함 하세요.
-  - **한글 예시**: 사용자 "페이지 요약해줘" → text: "{bot_name}님, https://krafton.atlassian.net/wiki/spaces/DLT/pages/123456 이 페이지 내용을 요약해서 채널에 공지해줘"
-  - **영문 예시**: User "summarize the page" → text: "{bot_name}, summarize the content of https://krafton.atlassian.net/wiki/spaces/DLT/pages/123456 and announce it to the channel"
+  - **한글 예시**: 사용자 "페이지 요약해줘" → text: "{bot_name}님, https://your-domain.atlassian.net/wiki/spaces/SPACE/pages/123456 이 페이지 내용을 요약해서 채널에 공지해줘"
+  - **영문 예시**: User "summarize the page" → text: "{bot_name}, summarize the content of https://your-domain.atlassian.net/wiki/spaces/SPACE/pages/123456 and announce it to the channel"
 - 워크샵 장소를 찾을 때는 `mcp__airbnb__*` 도구를 사용하세요.
 - arXiv 논문 링크(예: https://arxiv.org/)가 주어졌을 때는 `mcp__arxiv__*` 도구를 사용하세요.
 - 코드 관련 문서를 찾을 때는 `mcp__context7__*` 도구를 사용하세요.
@@ -234,19 +234,19 @@ def build_tool_usage_rules(settings: Settings) -> str:
     # MCP 설정 - GitLab
     if settings.GITLAB_ENABLED:
         conditional_rules.append(
-            "- Gitlab 링크(예: https://git.projectbro.com/)가 주어졌을 때는 `mcp__gitlab__*` 도구를 사용하세요."
+            "- Gitlab 링크(예: https://gitlab.com/, https://git.company.com/)가 주어졌을 때는 `mcp__gitlab__*` 도구를 사용하세요."
         )
 
     # MCP - Microsoft 365 (Lokka)
     if settings.MS365_ENABLED:
         conditional_rules.append(
-            "- Microsoft 365 작업은 `mcp__ms365__*` 도구를 사용하세요. Outlook 이메일, 캘린더 일정, OneDrive 파일, SharePoint 문서(https://blueholestudio-my.sharepoint.com/)를 모두 관리할 수 있습니다."
+            "- Microsoft 365 작업은 `mcp__ms365__*` 도구를 사용하세요. Outlook 이메일, 캘린더 일정, OneDrive 파일, SharePoint 문서(https://company-my.sharepoint.com/, https://company.sharepoint.com/sites/Team)를 모두 관리할 수 있습니다."
         )
 
     # MCP - Atlassian
     if settings.ATLASSIAN_ENABLED:
         conditional_rules.append(
-            "- Atlassian(Confluence/Jira) 링크(예: https://krafton.atlassian.net/)가 주어졌을 때는 먼저 `confluence-deep-reader` skill을 사용하고 워크플로우에 따라 `mcp__atlassian__*` 도구를 사용하세요."
+            "- Atlassian(Confluence/Jira) 링크(예: https://your-domain.atlassian.net/, https://confluence.company.com/, https://jira.company.com/)가 주어졌을 때는 먼저 `confluence-deep-reader` skill을 사용하고 워크플로우에 따라 `mcp__atlassian__*` 도구를 사용하세요."
         )
 
     # MCP - Tableau

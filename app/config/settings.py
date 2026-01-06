@@ -140,9 +140,13 @@ class Settings(BaseSettings):
 
         if credential_path:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credential_path
-            os.environ['ANTHROPIC_VERTEX_PROJECT_ID'] = "dl-service-dev"
-            os.environ['ANTHROPIC_VERTEX_REGION'] = 'us-east5'
-            os.environ['CLAUDE_CODE_USE_VERTEX'] = "1"
+            os.environ["ANTHROPIC_VERTEX_PROJECT_ID"] = os.environ.get(
+                "ANTHROPIC_VERTEX_PROJECT_ID", "your-project-id"
+            )
+            os.environ["ANTHROPIC_VERTEX_REGION"] = os.environ.get(
+                "ANTHROPIC_VERTEX_REGION", "your-region"
+            )
+            os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
             # Pydantic v2 BaseSettings는 frozen이므로 object.__setattr__ 사용
             # 사용자 선택 모델을 Vertex AI 모델명으로 변환
             vertex_model_map = {
