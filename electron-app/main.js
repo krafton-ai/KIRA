@@ -447,6 +447,11 @@ async function startServer() {
   const config = parseConfigFile(configFile);
   Object.assign(env, config);
 
+  // Windows: Set UTF-8 encoding for Python subprocess (fixes Korean characters)
+  if (process.platform === 'win32') {
+    env.PYTHONIOENCODING = 'utf-8';
+  }
+
   // Debug: Log WEB_INTERFACE_AUTH_PROVIDER
   log.info(`[CONFIG] WEB_INTERFACE_AUTH_PROVIDER from config: ${config.WEB_INTERFACE_AUTH_PROVIDER || 'NOT SET'}`);
 
