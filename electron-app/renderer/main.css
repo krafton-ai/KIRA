@@ -567,8 +567,8 @@ body {
   border-radius: 6px;
   border: 1px solid #3f4147;
   overflow-y: auto;
-  min-height: 400px;
-  max-height: calc(100vh - 300px);
+  flex: 1;
+  min-height: 200px;
   outline: none;
 }
 
@@ -749,6 +749,11 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+.server-screen .content-body {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Scrollbar */

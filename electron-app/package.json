@@ -5,8 +5,12 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --mac",
-    "deploy": "electron-builder --mac --publish always"
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "deploy": "electron-builder --mac --publish always",
+    "deploy:win": "electron-builder --win --publish always"
   },
   "keywords": [
     "slack",
@@ -18,7 +22,8 @@
   "license": "ISC",
   "devDependencies": {
     "electron": "^39.1.2",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "png-to-ico": "^3.0.1"
   },
   "dependencies": {
     "electron-log": "^5.0.0",
@@ -64,6 +69,31 @@
           "path": "/Applications"
         }
       ]
+    },
+    "win": {
+      "icon": "icons/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "KIRA"
+    },
+    "linux": {
+      "icon": "icons/icon.png",
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office"
     },
     "files": [
       "**/*",
