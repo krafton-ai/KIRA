@@ -159,7 +159,10 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "📦 Version: $VERSION"
-          cd vitepress-app
+          # Update electron-app/package.json first (sync-version.js reads from it)
+          cd electron-app
+          npm version $VERSION --no-git-tag-version
+          cd ../vitepress-app
           node scripts/sync-version.js
 
       - name: Build VitePress docs

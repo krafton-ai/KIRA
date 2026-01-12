@@ -18,7 +18,8 @@ const files = [
 
 // Regex to match version patterns
 const patterns = [
-  { regex: /KIRA-\d+\.\d+\.\d+-(universal|arm64)\.dmg/g, replace: `KIRA-${version}-arm64.dmg` }
+  { regex: /KIRA-\d+\.\d+\.\d+-(universal|arm64)\.dmg/g, replace: `KIRA-${version}-arm64.dmg` },
+  { regex: /KIRA[- ]Setup[- ]\d+\.\d+\.\d+\.exe/g, replace: `KIRA Setup ${version}.exe` }
 ];
 
 let updated = 0;

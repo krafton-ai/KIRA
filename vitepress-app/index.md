@@ -28,8 +28,11 @@ hero:
       text: GitHub
       link: https://github.com/krafton-ai/kira
     - theme: alt
-      text: KIRA for macOS (Apple Silicon)
+      text: macOS (Apple Silicon)
       link: https://kira.krafton-ai.com/download/KIRA-0.1.7-arm64.dmg
+    - theme: alt
+      text: Windows
+      link: https://kira.krafton-ai.com/download/KIRA Setup 0.1.7.exe
 
 features:
   - icon: 💬
