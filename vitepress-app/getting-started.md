@@ -89,6 +89,7 @@ Before you begin, you'll need:
 
 ### 3. Computer Requirements
 - **macOS**: 10.15 (Catalina) or later
+- **Windows**: Windows 11 or later
 - Free disk space: 500MB or more
 
 ### 4. Claude Pro Plan
@@ -169,9 +170,15 @@ uv is **automatically installed** when you first start KIRA. If uv is not detect
 
 If automatic installation fails, you can install it manually:
 
-```bash
+::: code-group
+```bash [macOS]
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
+
+```powershell [Windows]
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+:::
 
 Verify installation:
 ```bash
@@ -186,9 +193,19 @@ uv is a fast Python package manager. KIRA uses it to automatically install and m
 
 ## 📥 Step 2: Download and Install KIRA
 
-1. Download [KIRA for macOS (Apple Silicon)](https://kira.krafton-ai.com/download/KIRA-0.1.7-arm64.dmg)
+::: code-group
+```txt [macOS]
+1. Download KIRA for macOS (Apple Silicon): https://kira.krafton-ai.com/download/KIRA-0.1.7-arm64.dmg
 2. Open the DMG file and drag KIRA.app to the Applications folder
 3. Launch KIRA from the Applications folder
+```
+
+```txt [Windows]
+1. Download KIRA for Windows: https://kira.krafton-ai.com/download/KIRA%20Setup%200.1.7.exe
+2. Run the installer and follow the prompts
+3. Launch KIRA from the Start menu or desktop shortcut
+```
+:::
 
 ---
 

@@ -126,7 +126,8 @@ When this option is on:
 
 ### Chrome Won't Open
 - Verify Chrome browser is installed
-- macOS: Check Chrome in Applications folder
+  - **macOS**: Check Chrome in Applications folder
+  - **Windows**: Check Chrome in Program Files or via Start menu search
 - Check if other Chrome processes are running
 
 ### "Timeout" Error

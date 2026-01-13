@@ -126,7 +126,8 @@ KIRA: [Playwright 실행]
 
 ### Chrome이 열리지 않음
 - Chrome 브라우저가 설치되어 있는지 확인
-- macOS: Applications 폴더에 Chrome 설치 확인
+  - **macOS**: Applications 폴더에 Chrome 설치 확인
+  - **Windows**: Program Files 또는 시작 메뉴에서 Chrome 설치 확인
 - 다른 Chrome 프로세스가 실행 중인지 확인
 
 ### "Timeout" 에러

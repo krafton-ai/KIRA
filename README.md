@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-green)](https://nodejs.org/)
 [![Electron](https://img.shields.io/badge/electron-latest-9feaf9)](https://www.electronjs.org/)
-[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)]()
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)]()
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 **24/7 AI agent powered by Claude, running entirely on your desktop**
@@ -40,7 +40,12 @@ KIRA is an **AI virtual coworker** that runs as a desktop application. Once inst
 - 📧 **Email Monitoring**: Auto-extract tasks from Outlook emails
 - 📝 **Document Tracking**: Monitor Confluence and Jira updates
 - 🧠 **Memory System**: Automatically remembers conversations and project context
-- 🔒 **Privacy First**: All data stays on your computer
+- 🔒 **Privacy First**: All data and memory stored locally — no third-party services involved
+    - Your conversation history, memory files, and settings are stored only on your machine
+    - KIRA communicates directly with Anthropic's Claude API using your own API key
+    - Unlike third-party AI services, no intermediary stores or accesses your data
+    - We do not collect, store, or process any user data — see [Data Privacy Disclaimer](#%EF%B8%8F-data-privacy--liability-disclaimer)
+- 🔑 **Bring Your Own API Key**: Transparent, pay-as-you-go costs with your own Claude API key — no subscriptions or hidden fees
 
 ### Two Usage Modes
 
@@ -64,7 +69,7 @@ KIRA is an **AI virtual coworker** that runs as a desktop application. Once inst
 
 ### 1. Prerequisites
 
-- macOS 10.15 or later
+- macOS 10.15 or later / Windows 11 or later
 - Slack workspace (admin access required)
 - Claude API key (Google Cloud Vertex AI)
 
@@ -326,10 +331,9 @@ npm run deploy
 
 ## 🔐 Security
 
-- ✅ All data stored locally
-- ✅ External communication only with Claude API and enabled MCP servers
-- ✅ config.env file has owner-only read/write permissions
-- ⚠️ Never share API keys or tokens
+- ✅ All memory, logs, and settings stored locally on your machine
+- ✅ Direct communication with Claude API — no intermediary services
+- ✅ External connections only to Claude API and MCP servers you enable
 
 ---
 
@@ -363,22 +367,33 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details.
 
 ## ⚠️ Data Privacy & Liability Disclaimer
 
-KIRA is a fully local, on-premise AI agent that runs entirely on your device.
+KIRA is a privacy-first AI agent. All memory, logs, and settings are stored on your device. Prompts are sent to Anthropic's Claude API using your own API key — no intermediary services are involved.
+
+### How Your Data Flows
+
+| Data Type | Where It Goes |
+|-----------|---------------|
+| Conversation memory, settings, logs | Your machine only |
+| Prompts and queries | Anthropic Claude API (via your API key) |
+| Usage history, analytics | Nowhere — we don't collect anything |
+
+**Unlike third-party AI tools built on LLM providers, KIRA doesn't add another layer that stores your data. Your information goes to one place (Anthropic), not two.**
 
 ### 1. No Data Collection
-KRAFTON does NOT collect, store, or process any user data.
-All data and memory are stored locally on your computer and under your sole control.
+
+KRAFTON does NOT collect, store, or process any user data. All data and memory are stored locally on your computer and under your sole control.
 
 ### 2. User Responsibility
+
 You are responsible for managing your own Claude API key and usage, including any usage fees and security.
 
 ### 3. Third-Party Integration
-KRAFTON is not responsible or liable for any data processed through, or any actions taken by, third-party services (e.g., Slack, Outlook, Confluence, Jira, GitLab, Anthropic Claude API) that you choose to integrate with KIRA.
-By using KIRA, you agree to comply with all applicable third-party terms, including Anthropic's Claude API Terms of Service.
+
+KRAFTON is not responsible or liable for any data processed through, or any actions taken by, third-party services (e.g., Slack, Outlook, Confluence, Jira, GitLab, Anthropic Claude API) that you choose to integrate with KIRA. By using KIRA, you agree to comply with all applicable third-party terms, including Anthropic's Claude API Terms of Service.
 
 ### 4. No Warranty
-This software is provided "AS IS", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement.
-In no event shall KRAFTON or any contributor be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
+
+This software is provided "AS IS", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement. In no event shall KRAFTON or any contributor be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
 
 ---
 
