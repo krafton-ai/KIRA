@@ -20,9 +20,8 @@ uv run harbor run \
     --env docker \
     -n 1
 ```
-
+  
 
 
 ---
-
-For more details, visit our [blog post](https://krafton-ai.github.io/blog/).
+KRAFTON AI & Ludo Robotics
