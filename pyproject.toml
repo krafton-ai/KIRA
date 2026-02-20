@@ -1,0 +1,12 @@
+[project]
+name = "terminus-kira"
+version = "0.1.0"
+description = "Terminus KIRA agent"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic",
+    "harbor>=0.1.44",
+    "litellm",
+    "tenacity",
+]
