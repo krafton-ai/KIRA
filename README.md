@@ -20,7 +20,12 @@ uv run harbor run \
     --env docker \
     -n 1
 ```
-  
+
+
+For more details, visit our [blog post](https://krafton-ai.github.io/blog/terminus_kira_en/).           
+
+---
+
 ## Citing Us
 
 If you found Terminus-KIRA useful, please cite us as:
