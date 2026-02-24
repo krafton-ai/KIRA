@@ -1,7 +1,7 @@
 <p align="center">
   <h1 align="center">Terminus-KIRA</h1>
   <p align="center">
-    A smarter agent harness for <a href="https://github.com/TerminalBench/TerminalBench">TerminalBench</a>, built on top of <a href="https://github.com/TerminalBench/TerminalBench">Terminus 2</a>
+    A smarter agent harness for <a href="https://github.com/laude-institute/terminal-bench">TerminalBench</a>, built on top of <a href="https://github.com/laude-institute/terminal-bench">Terminus 2</a>
     <br/>
     <em>Simple fixes, significant gains.</em>
   </p>
