@@ -1,13 +1,43 @@
+"""
+TerminusKira - A native tool-use variant of Terminus2.
+
+This agent inherits from harbor's Terminus2 and replaces the ICL (In-Context Learning)
+JSON/XML parsing approach with native tool calling via the `tools` parameter in LLM API calls.
+"""
+
 import asyncio
+import json
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import litellm
-from harbor.agents.terminus_2.terminus_2 import Command, Terminus2
+from litellm.exceptions import (
+    BadRequestError,
+    ContextWindowExceededError as LiteLLMContextWindowExceededError,
+)
+from tenacity import (
+    retry,
+    retry_if_not_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+from harbor.agents.terminus_2 import Terminus2
+from harbor.agents.terminus_2.terminus_2 import Command
 from harbor.agents.terminus_2.tmux_session import TmuxSession
-from harbor.llms.base import LLMResponse
+from harbor.environments.base import BaseEnvironment
+from harbor.models.agent.context import AgentContext
+from harbor.llms.base import (
+    ContextLengthExceededError,
+    LLMResponse,
+    OutputLengthExceededError,
+)
 from harbor.llms.chat import Chat
+from anthropic_caching import add_anthropic_caching
+from harbor.models.metric import UsageInfo
 from harbor.models.trajectories import (
     Metrics,
     Observation,
@@ -15,95 +45,224 @@ from harbor.models.trajectories import (
     Step,
     ToolCall,
 )
-from litellm.exceptions import BadRequestError
-from tenacity import (
-    retry,
-    retry_if_not_exception_type,
-    stop_after_attempt,
-    wait_exponential,
+
+
+class BlockError(Exception):
+    """Raised when infrastructure API call blocks for too long."""
+    pass
+
+
+BLOCK_TIMEOUT_SEC = 600  # 10 minutes
+_MARKER_PREFIX = "__CMDEND__"  # Marker prefix for command completion detection
+
+
+@dataclass
+class ToolCallResponse:
+    """Extended response that includes tool calls."""
+
+    content: str | None
+    tool_calls: list[dict[str, Any]]
+    reasoning_content: str | None = None
+    usage: UsageInfo | None = None
+
+
+@dataclass
+class ImageReadRequest:
+    """Request to read and analyze an image file."""
+
+    file_path: str
+    image_read_instruction: str
+
+
+# Tool description strings
+_EXECUTE_COMMANDS_DESC = "Call this to execute commands in the terminal with your analysis and plan."
+
+_ANALYSIS_DESC = (
+    "Analyze the current state based on the terminal output provided. "
+    "What do you see? What has been accomplished? What still needs to be done?"
 )
-from terminus_kira.image_read_json_parser import (
-    ImageReadJSONParser,
-    ImageReadRequest,
+
+_PLAN_DESC = (
+    "Describe your plan for the next steps. "
+    "What commands will you run and why? "
+    "Be specific about what you expect each command to accomplish."
 )
-from anthropic_caching import add_anthropic_caching
 
-_MARKER_PREFIX = "__CMD_DONE_"
-MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5MB Anthropic limit
+_COMMANDS_DESC = "The commands array can be empty if you want to wait without taking action."
+
+_KEYSTROKES_DESC = (
+    "String containing the exact keystrokes to send to the terminal. "
+    "The text will be used completely verbatim as keystrokes. "
+    "Write commands exactly as you want them sent to the terminal. "
+    "Most bash commands should end with a newline (\\n) to cause them to execute. "
+    "For special key sequences, use tmux-style escape sequences: C-c for Ctrl+C, C-d for Ctrl+D. "
+    "Each command's keystrokes are sent exactly as written to the terminal. "
+    "Do not include extra whitespace before or after the keystrokes unless it's part of the intended command."
+)
+
+_DURATION_DESC = (
+    "Number of seconds to wait for the command to complete (default: 1.0) "
+    "before the next command will be executed. "
+    "On immediate tasks (e.g., cd, ls, echo, cat) set a duration of 0.1 seconds. "
+    "On commands (e.g., gcc, find, rustc) set a duration of 1.0 seconds. "
+    "On slow commands (e.g., make, python3 [long running script], wget [file]) set an appropriate duration as you determine necessary. "
+    "It is better to set a smaller duration than a longer duration. "
+    "It is always possible to wait again if the prior output has not finished, "
+    "by running empty keystrokes with a duration on subsequent requests to wait longer. "
+    "Never wait longer than 60 seconds; prefer to poll to see intermediate result status."
+)
+
+_TASK_COMPLETE_DESC = "Call this when the task is complete."
+
+_IMAGE_READ_DESC = (
+    "Read and analyze an image file. "
+    "Use this ONLY for image files that you need to visually analyze. "
+    "Do NOT use this for text files — use shell commands (cat, head, etc.) instead. "
+    "The image will be sent to the model for visual analysis "
+    "and you will receive a text description in the next turn."
+)
+
+_FILE_PATH_DESC = (
+    "Absolute path to the image file. "
+    "Supported formats: PNG, JPG, JPEG, GIF, WEBP."
+)
+
+_IMAGE_READ_INSTRUCTION_DESC = (
+    "A text instruction describing what you want to learn from the image. "
+    "Be specific about what information to extract."
+)
+
+# Tool definitions for native tool use
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_commands",
+            "description": _EXECUTE_COMMANDS_DESC,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "analysis": {
+                        "type": "string",
+                        "description": _ANALYSIS_DESC,
+                    },
+                    "plan": {
+                        "type": "string",
+                        "description": _PLAN_DESC,
+                    },
+                    "commands": {
+                        "type": "array",
+                        "description": _COMMANDS_DESC,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "keystrokes": {
+                                    "type": "string",
+                                    "description": _KEYSTROKES_DESC,
+                                },
+                                "duration": {
+                                    "type": "number",
+                                    "description": _DURATION_DESC,
+                                },
+                            },
+                            "required": ["keystrokes"],
+                        },
+                    },
+                },
+                "required": ["analysis", "plan", "commands"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "task_complete",
+            "description": _TASK_COMPLETE_DESC,
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "image_read",
+            "description": _IMAGE_READ_DESC,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": _FILE_PATH_DESC,
+                    },
+                    "image_read_instruction": {
+                        "type": "string",
+                        "description": _IMAGE_READ_INSTRUCTION_DESC,
+                    },
+                },
+                "required": ["file_path", "image_read_instruction"],
+            },
+        },
+    },
+]
 
 
-class TerminusKIRA(Terminus2):
-    def __init__(
-        self,
-        *args,
-        time_limit_seconds: float | None = None,
-        response_format: str | dict | None = "json_object",
-        **kwargs,
-    ):
+class TerminusKira(Terminus2):
+    """
+    TerminusKira extends harbor's Terminus2 with native tool calling.
+
+    Instead of prompting the model to output JSON/XML and parsing it,
+    TerminusKira uses the `tools` parameter in LLM API calls for structured outputs.
+    """
+
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._time_limit_seconds = time_limit_seconds
-        # Normalize response_format: string → dict
-        if isinstance(response_format, str):
-            self._response_format = {"type": response_format}
-        elif isinstance(response_format, dict):
-            self._response_format = response_format
-        else:
-            self._response_format = None
-        self._total_time_saved = 0.0
         self._marker_seq = 0
-        if time_limit_seconds is not None:
-            self._prompt_template = self._prompt_template.replace(
-                "{time_limit}", str(int(time_limit_seconds))
-            )
-        else:
-            # Remove TIME BUDGET section when no time limit is given
-            self._remove_time_budget_section()
+        self._total_time_saved = 0.0
 
-    def _remove_time_budget_section(self) -> None:
-        """Remove TIME BUDGET section when no time limit is provided."""
-        lines = self._prompt_template.split("\n")
-        filtered = []
-        skip = False
-        for line in lines:
-            if line.startswith("TIME BUDGET:"):
-                skip = True
-                continue
-            if skip:
-                if line.strip() == "":
-                    skip = False
-                continue
-            filtered.append(line)
-        self._prompt_template = "\n".join(filtered)
+    async def _with_block_timeout(self, coro, timeout_sec: int = BLOCK_TIMEOUT_SEC):
+        """Wrap coroutine with block detection timeout."""
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            raise BlockError(f"Infrastructure API blocked for {timeout_sec}s")
 
     async def _execute_commands(
         self,
         commands: list[Command],
         session: TmuxSession,
     ) -> tuple[bool, str]:
-        """Reduce unnecessary waiting for fast-finishing commands using completion markers.
+        """Execute commands with marker-based polling for early completion detection.
 
-        Sends a unique echo marker after each command. If the marker appears
-        in the output, proceeds immediately without waiting the full duration.
-        If duration is exceeded, continues as normal.
+        Sends a unique echo marker after each command. If the marker appears in
+        the output before duration_sec, we move on immediately instead of waiting
+        for the full duration. This reduces unnecessary wait time for fast commands.
         """
         for command in commands:
             self._marker_seq += 1
             marker = f"{_MARKER_PREFIX}{self._marker_seq}__"
             start = time.monotonic()
 
-            # Send the command (no keystroke transformation)
+            # Send the command
             await session.send_keys(
-                command.keystrokes, block=False, min_timeout_sec=0.0
+                command.keystrokes,
+                block=False,
+                min_timeout_sec=0.0,
             )
-            # Send marker: runs when the previous command finishes and shell returns
+            # Send marker: will execute when shell returns after command
             await session.send_keys(
-                f"echo '{marker}'\n", block=False, min_timeout_sec=0.0
+                f"echo '{marker}'\n",
+                block=False,
+                min_timeout_sec=0.0,
             )
 
-            # Poll until marker appears; break out if duration is exceeded
+            # Poll for marker, exit early if found before duration
             await asyncio.sleep(min(0.3, command.duration_sec))
             while time.monotonic() - start < command.duration_sec:
-                if marker in await session.capture_pane():
+                pane_content = await session.capture_pane()
+                if marker in pane_content:
                     break
                 await asyncio.sleep(0.5)
 
@@ -116,22 +275,15 @@ class TerminusKIRA(Terminus2):
                     f"cmd={command.keystrokes!r}"
                 )
 
-        # Strip lines containing markers so only the original command output is visible to the LLM
+        # Filter out marker lines from output so LLM sees clean output
         output = await session.get_incremental_output()
-        markers = {f"{_MARKER_PREFIX}{seq}__" for seq in range(1, self._marker_seq + 1)}
+        markers = {
+            f"{_MARKER_PREFIX}{seq}__" for seq in range(1, self._marker_seq + 1)
+        }
         lines = output.split("\n")
-        lines = [l for l in lines if not any(m in l for m in markers)]
+        lines = [line for line in lines if not any(m in line for m in markers)]
         output = "\n".join(lines)
         return False, self._limit_output_length(output)
-
-    async def run(self, *args, **kwargs):
-        self._total_time_saved = 0.0
-        result = await super().run(*args, **kwargs)
-        self.logger.debug(f"[polling] total time saved: {self._total_time_saved:.1f}s")
-        return result
-
-    def _limit_output_length(self, output: str, max_bytes: int = 30000) -> str:
-        return super()._limit_output_length(output, max_bytes)
 
     @staticmethod
     def name() -> str:
@@ -140,86 +292,165 @@ class TerminusKIRA(Terminus2):
     def version(self) -> str | None:
         return "1.0.0"
 
+    async def run(
+        self, instruction: str, environment: BaseEnvironment, context: AgentContext
+    ) -> None:
+        """Run the agent, storing the original instruction for later use."""
+        self._original_instruction = instruction
+        await super().run(instruction, environment, context)
+
     def _get_parser(self):
-        """Return the ImageReadJSONParser."""
-        return ImageReadJSONParser()
+        """Return None since we use native tool calling instead of parsing."""
+        return None
 
     def _get_prompt_template_path(self) -> Path:
+        """Return the path to the prompt template for native tool use."""
         return (
-            Path(__file__).parent.parent / "prompt-templates/terminus-kira-json-plain.txt"
+            Path(__file__).parent.parent
+            / "prompt-templates"
+            / "terminus-kira.txt"
         )
+
+    def _get_error_response_type(self) -> str:
+        """Return error response type for native tool use."""
+        return "response with valid tool calls"
 
     def _get_completion_confirmation_message(self, terminal_output: str) -> str:
-        """Return the task completion confirmation message."""
+        """Return task completion confirmation message for native tool use."""
         instruction = getattr(self, "_original_instruction", "N/A")
-
         return (
-            f"Original task:\n{instruction}\n\n"
-            f"Current terminal state:\n{terminal_output}\n\n"
-            "Are you sure you want to mark the task as complete?\n\n"
-            "[!] Checklist\n"
-            "- Does your solution meet the requirements in the original task above? [TODO/DONE]\n"
-            "- Does your solution account for potential changes in numeric values, array sizes, file contents, or configuration parameters? [TODO/DONE]\n"
-            "- Have you verified your solution from the all perspectives of a test engineer, a QA engineer, and the user who requested this task?\n"
-            "  - test engineer [TODO/DONE]\n"
-            "  - QA engineer [TODO/DONE]\n"
-            "  - user who requested this task [TODO/DONE]\n\n"
-            'After this point, solution grading will begin and no further edits will be possible. If edits are required, please include "task_complete": false in the JSON response again.'
+            f"Original task:\n{instruction}\n\n" \
+            f"Current terminal state:\n{terminal_output}\n\n" \
+            "Are you sure you want to mark the task as complete?\n\n" \
+            "[!] Checklist\n" \
+            "- Does your solution meet the requirements in the original task above? [TODO/DONE]\n" \
+            "- Does your solution account for potential changes in numeric values, array sizes, file contents, or configuration parameters? [TODO/DONE]\n" \
+            "- Have you verified your solution from the all perspectives of a test engineer, a QA engineer, and the user who requested this task?\n" \
+            "  - test engineer [TODO/DONE]\n" \
+            "  - QA engineer [TODO/DONE]\n" \
+            "  - user who requested this task [TODO/DONE]\n\n" \
+            "After this point, solution grading will begin and no further edits will be possible. If everything looks good, call task_complete tool again."
         )
 
-    async def _handle_llm_interaction(
-        self,
-        chat: Chat,
-        prompt: str,
-        logging_paths: tuple[Path | None, Path | None, Path | None],
-        original_instruction: str = "",
-        session: TmuxSession | None = None,
-    ) -> tuple[
-        list[Command], bool, str, str, str, LLMResponse, ImageReadRequest | None
-    ]:
-        """Extended version that also returns image_read request if present."""
-        llm_response = await self._query_llm(
-            chat, prompt, logging_paths, original_instruction, session
-        )
+    def _limit_output_length(self, output: str, max_bytes: int = 30000) -> str:
+        return super()._limit_output_length(output, max_bytes)
 
-        # Parse the response using the format-specific parser
-        result = self._parser.parse_response(llm_response.content)
+    def _extract_tool_calls(self, response) -> list[dict[str, Any]]:
+        """Extract tool calls from litellm response."""
+        tool_calls = []
+        try:
+            message = response.choices[0].message
+            if hasattr(message, "tool_calls") and message.tool_calls:
+                for tc in message.tool_calls:
+                    tool_calls.append({
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    })
+        except (AttributeError, IndexError):
+            pass
+        return tool_calls
 
-        # Collect error/warning feedback for next prompt
-        feedback = ""
-        if result.error:
-            feedback += f"ERROR: {result.error}"
-            if result.warning:
-                feedback += f"\nWARNINGS: {result.warning}"
-        elif result.warning:
-            feedback += f"WARNINGS: {result.warning}"
-
-        # Log warnings if present
-        if result.warning:
-            self.logger.debug(f"Parser warnings: {result.warning}")
-
-        # Convert ParsedCommands to Commands
-        commands = []
-        for parsed_cmd in result.commands:
-            commands.append(
-                Command(
-                    keystrokes=parsed_cmd.keystrokes,
-                    duration_sec=min(parsed_cmd.duration, 60),
+    def _extract_usage_info(self, response) -> UsageInfo | None:
+        """Extract usage info from litellm response."""
+        try:
+            usage = response.usage
+            if usage:
+                cost = 0.0
+                try:
+                    cost = litellm.completion_cost(completion_response=response) or 0.0
+                except Exception:
+                    pass
+                return UsageInfo(
+                    prompt_tokens=usage.prompt_tokens or 0,
+                    completion_tokens=usage.completion_tokens or 0,
+                    cache_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+                    cost_usd=cost,
                 )
+        except (AttributeError, TypeError):
+            pass
+        return None
+
+    def _parse_tool_calls(
+        self, tool_calls: list[dict[str, Any]]
+    ) -> tuple[list[Command], bool, str, str, str, ImageReadRequest | None]:
+        """Parse tool calls into commands.
+
+        Returns:
+            Tuple of (commands, is_task_complete, feedback, analysis, plan, image_read)
+        """
+        commands = []
+        is_task_complete = False
+        feedback = ""
+        analysis = ""
+        plan = ""
+        image_read = None
+
+        if not tool_calls:
+            feedback = (
+                "WARNINGS: Your response contained no tool calls. "
+                "Please use execute_commands to run commands."
             )
+            return commands, is_task_complete, feedback, analysis, plan, image_read
 
-        # Extract image_read from ImageReadParseResult
-        image_read = getattr(result, "image_read", None)
+        for tool_call in tool_calls:
+            function_name = tool_call.get("function", {}).get("name", "")
+            arguments_str = tool_call.get("function", {}).get("arguments", "{}")
 
-        return (
-            commands,
-            result.is_task_complete,
-            feedback,
-            result.analysis,
-            result.plan,
-            llm_response,
-            image_read,
-        )
+            try:
+                if isinstance(arguments_str, str):
+                    arguments = json.loads(arguments_str)
+                else:
+                    arguments = arguments_str
+            except json.JSONDecodeError:
+                self.logger.warning(f"Failed to parse tool arguments: {arguments_str}")
+                continue
+
+            if function_name == "execute_commands":
+                # Extract analysis and plan
+                analysis = arguments.get("analysis", "")
+                plan = arguments.get("plan", "")
+
+                # Extract commands array
+                cmds = arguments.get("commands", [])
+                for cmd in cmds:
+                    keystrokes = cmd.get("keystrokes", "")
+                    duration = cmd.get("duration", 1.0)
+                    commands.append(
+                        Command(
+                            keystrokes=keystrokes,
+                            duration_sec=min(duration, 60),
+                        )
+                    )
+            elif function_name == "task_complete":
+                # Mark task as complete
+                is_task_complete = True
+            elif function_name == "image_read":
+                # Extract image read request
+                file_path = arguments.get("file_path", "")
+                instruction = arguments.get("image_read_instruction", "")
+                if file_path and instruction:
+                    image_read = ImageReadRequest(
+                        file_path=file_path,
+                        image_read_instruction=instruction,
+                    )
+                else:
+                    feedback = (
+                        "WARNINGS: image_read requires both file_path and "
+                        "image_read_instruction arguments."
+                    )
+            else:
+                # Unknown function name - provide feedback
+                feedback = (
+                    f"WARNINGS: Unknown function '{function_name}'. "
+                    "Please use execute_commands, task_complete, or image_read."
+                )
+                self.logger.warning(f"Unknown function called: {function_name}")
+
+        return commands, is_task_complete, feedback, analysis, plan, image_read
 
     @retry(
         stop=stop_after_attempt(5),
@@ -243,16 +474,11 @@ class TerminusKIRA(Terminus2):
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "timeout": 900,  # 15 minutes timeout, retry on timeout
             "drop_params": True,
         }
-        # NOTE: no response_format here — image analysis returns free-form text
-        if hasattr(self, "_reasoning_effort") and self._reasoning_effort:
-            kwargs["reasoning_effort"] = self._reasoning_effort
-        if hasattr(self, "_max_thinking_tokens") and self._max_thinking_tokens:
-            kwargs["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": self._max_thinking_tokens,
-            }
+        # Image analysis doesn't need high reasoning effort
+        # Skip reasoning_effort to use default (faster response)
         return await litellm.acompletion(**kwargs)
 
     async def _execute_image_read(
@@ -272,7 +498,9 @@ class TerminusKIRA(Terminus2):
         file_path = image_read.file_path
 
         # Read image from container as base64 via harbor environment exec
-        result = await self._session.environment.exec(command=f"base64 {file_path}")
+        result = await self._with_block_timeout(
+            self._session.environment.exec(command=f"base64 {file_path}")
+        )
         if result.return_code != 0:
             error_output = result.stderr or ""
             return f"ERROR: Failed to read file '{file_path}': {error_output}"
@@ -292,7 +520,8 @@ class TerminusKIRA(Terminus2):
         if mime is None:
             return (
                 f"ERROR: Unsupported image format '{ext}'. "
-                f"Convert to PNG first (e.g. convert image{ext} to image.png), then use `image_read` on the PNG file."
+                f"Convert to PNG first (e.g. convert image{ext} to image.png), "
+                f"then use `image_read` on the PNG file."
             )
 
         # Construct multimodal user message
@@ -337,6 +566,270 @@ class TerminusKIRA(Terminus2):
 
         return f"File Read Result for '{file_path}':\n{response_text}"
 
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+        retry=retry_if_not_exception_type(BadRequestError),
+    )
+    async def _call_llm_with_tools(
+        self,
+        messages: list[dict],
+    ) -> ToolCallResponse:
+        """Call LLM directly with tools parameter.
+
+        This bypasses harbor's Chat class to get access to tool_calls.
+        """
+        # Apply Anthropic caching
+        messages = add_anthropic_caching(messages, self._model_name)
+
+        # Build completion kwargs
+        completion_kwargs = {
+            "model": self._model_name,
+            "messages": messages,
+            "temperature": self._temperature,
+            "tools": TOOLS,
+            "timeout": 900,  # 15 minutes timeout, retry on timeout
+            "drop_params": True,
+        }
+
+        # Add api_base if available
+        if hasattr(self._llm, "_api_base") and self._llm._api_base:
+            completion_kwargs["api_base"] = self._llm._api_base
+
+        # Add reasoning effort if available
+        # When reasoning_effort is set, temperature MUST be 1 (API requirement)
+        if self._reasoning_effort:
+            completion_kwargs["reasoning_effort"] = self._reasoning_effort
+            completion_kwargs["temperature"] = 1
+
+        try:
+            response = await litellm.acompletion(**completion_kwargs)
+        except LiteLLMContextWindowExceededError:
+            raise ContextLengthExceededError()
+
+        # Extract response data
+        message = response.choices[0].message
+        content = message.content or ""
+        tool_calls = self._extract_tool_calls(response)
+        usage_info = self._extract_usage_info(response)
+
+        # Check for truncation
+        finish_reason = response.choices[0].finish_reason
+        if finish_reason == "length":
+            raise OutputLengthExceededError(
+                "Response was truncated due to max tokens limit",
+                truncated_response=content,
+            )
+
+        # Extract reasoning content (for models that support it)
+        reasoning_content = None
+        if hasattr(message, "reasoning_content"):
+            reasoning_content = message.reasoning_content
+
+        return ToolCallResponse(
+            content=content,
+            tool_calls=tool_calls,
+            reasoning_content=reasoning_content,
+            usage=usage_info,
+        )
+
+    async def _handle_llm_interaction(
+        self,
+        chat: Chat,
+        prompt: str,
+        logging_paths: tuple[Path | None, Path | None, Path | None],
+        original_instruction: str = "",
+        session: TmuxSession | None = None,
+    ) -> tuple[list[Command], bool, str, str, str, LLMResponse, ImageReadRequest | None]:
+        """Handle LLM interaction using native tool calling.
+
+        This overrides the parent's _handle_llm_interaction to use native tools
+        instead of JSON/XML parsing.
+        """
+        _, prompt_path, response_path = logging_paths
+
+        if prompt_path is not None:
+            prompt_path.write_text(prompt)
+
+        # Build messages from chat history + new prompt
+        messages = chat.messages.copy()
+        messages.append({"role": "user", "content": prompt})
+
+        try:
+            start_time = time.time()
+            tool_response = await self._call_llm_with_tools(messages)
+            end_time = time.time()
+            request_time_ms = (end_time - start_time) * 1000
+            self._api_request_times.append(request_time_ms)
+
+            # Update chat history
+            assistant_message = {"role": "assistant", "content": tool_response.content}
+            if tool_response.tool_calls:
+                assistant_message["tool_calls"] = tool_response.tool_calls
+
+            chat._messages.append({"role": "user", "content": prompt})
+            chat._messages.append(assistant_message)
+
+            # Add tool result messages for each tool call (required by OpenAI API)
+            if tool_response.tool_calls:
+                for tc in tool_response.tool_calls:
+                    tool_call_id = tc.get("id", "")
+                    chat._messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": "executed",
+                    })
+                chat.reset_response_chain()
+
+            # Update cumulative metrics
+            if tool_response.usage:
+                chat._cumulative_input_tokens += tool_response.usage.prompt_tokens
+                chat._cumulative_output_tokens += tool_response.usage.completion_tokens
+                chat._cumulative_cache_tokens += tool_response.usage.cache_tokens
+                chat._cumulative_cost += tool_response.usage.cost_usd
+
+        except ContextLengthExceededError:
+            if not self._enable_summarize:
+                self.logger.debug("Context length exceeded and summarization is OFF.")
+                raise
+
+            self.logger.debug("Context length exceeded. Using fallback summarization.")
+
+            if session is None:
+                raise RuntimeError("Cannot handle context length error without session")
+
+            self._unwind_messages_to_free_tokens(chat, target_free_tokens=4000)
+
+            summary_prompt = None
+            try:
+                summary_prompt, subagent_refs = await self._with_block_timeout(
+                    self._summarize(chat, original_instruction, session)
+                )
+                self._pending_subagent_refs = subagent_refs
+                self._pending_handoff_prompt = summary_prompt
+            except Exception as e:
+                self.logger.debug(f"SUMMARIZATION failed: {e}")
+
+            if summary_prompt is None:
+                current_screen = await self._with_block_timeout(
+                    session.capture_pane(capture_entire=False)
+                )
+                limited_screen = current_screen[-1000:] if current_screen else ""
+                summary_prompt = (
+                    f"{original_instruction}\n\nCurrent state: {limited_screen}"
+                )
+
+            # Retry with summarized context
+            messages = chat.messages.copy()
+            messages.append({"role": "user", "content": summary_prompt})
+
+            start_time = time.time()
+            tool_response = await self._call_llm_with_tools(messages)
+            end_time = time.time()
+            request_time_ms = (end_time - start_time) * 1000
+            self._api_request_times.append(request_time_ms)
+
+            # Update chat history
+            assistant_message = {"role": "assistant", "content": tool_response.content}
+            if tool_response.tool_calls:
+                assistant_message["tool_calls"] = tool_response.tool_calls
+
+            chat._messages.append({"role": "user", "content": summary_prompt})
+            chat._messages.append(assistant_message)
+
+            # Add tool result messages for each tool call
+            if tool_response.tool_calls:
+                for tc in tool_response.tool_calls:
+                    tool_call_id = tc.get("id", "")
+                    chat._messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": "executed",
+                    })
+                chat.reset_response_chain()
+
+            # Update cumulative metrics
+            if tool_response.usage:
+                chat._cumulative_input_tokens += tool_response.usage.prompt_tokens
+                chat._cumulative_output_tokens += tool_response.usage.completion_tokens
+                chat._cumulative_cache_tokens += tool_response.usage.cache_tokens
+                chat._cumulative_cost += tool_response.usage.cost_usd
+
+        except OutputLengthExceededError as e:
+            self.logger.debug(f"Output length exceeded: {e}")
+
+            error_msg = (
+                "ERROR!! Your response was truncated. "
+                "Please provide a shorter response with fewer commands."
+            )
+
+            chat._messages.extend([
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": "[truncated]"},
+                {"role": "user", "content": error_msg},
+            ])
+            chat.reset_response_chain()
+
+            # Retry
+            messages = chat.messages.copy()
+            start_time = time.time()
+            tool_response = await self._call_llm_with_tools(messages)
+            end_time = time.time()
+            self._api_request_times.append((end_time - start_time) * 1000)
+
+            assistant_message = {"role": "assistant", "content": tool_response.content}
+            if tool_response.tool_calls:
+                assistant_message["tool_calls"] = tool_response.tool_calls
+            chat._messages.append(assistant_message)
+
+            # Add tool result messages for each tool call
+            if tool_response.tool_calls:
+                for tc in tool_response.tool_calls:
+                    tool_call_id = tc.get("id", "")
+                    chat._messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": "executed",
+                    })
+                chat.reset_response_chain()
+
+            # Update cumulative metrics
+            if tool_response.usage:
+                chat._cumulative_input_tokens += tool_response.usage.prompt_tokens
+                chat._cumulative_output_tokens += tool_response.usage.completion_tokens
+                chat._cumulative_cache_tokens += tool_response.usage.cache_tokens
+                chat._cumulative_cost += tool_response.usage.cost_usd
+
+        # Log response
+        if response_path is not None:
+            response_text = (
+                f"Content: {tool_response.content or ''}\n\n"
+                f"Tool Calls: {json.dumps(tool_response.tool_calls, indent=2)}"
+            )
+            response_path.write_text(response_text)
+
+        # Parse tool calls into commands
+        commands, is_task_complete, feedback, analysis, plan, image_read = self._parse_tool_calls(
+            tool_response.tool_calls
+        )
+
+        # Create LLMResponse for compatibility with parent class
+        llm_response = LLMResponse(
+            content=tool_response.content or "",
+            reasoning_content=tool_response.reasoning_content,
+            usage=tool_response.usage,
+        )
+
+        return (
+            commands,
+            is_task_complete,
+            feedback,
+            analysis,
+            plan,
+            llm_response,
+            image_read,
+        )
+
     async def _run_agent_loop(
         self,
         initial_prompt: str,
@@ -344,34 +837,14 @@ class TerminusKIRA(Terminus2):
         logging_dir: Path | None = None,
         original_instruction: str = "",
     ) -> int:
+        """Run the agent loop with support for image_read tool."""
         if self._context is None:
             raise RuntimeError("Agent context is not set. This should never happen.")
 
         if self._session is None:
             raise RuntimeError("Session is not set. This should never happen.")
 
-        # Put entire prompt as system; user gets a fixed trigger message
-        chat._messages.insert(0, {"role": "system", "content": initial_prompt})
-        prompt = "Begin working on the task described in the system message."
-        self._original_instruction = original_instruction
-
-        # Responses API models (e.g., gpt-5.2-codex) reject response_format
-        # when 'json' is not in user/input messages (only in system/instructions),
-        # and do not support the temperature parameter.
-        _RESTRICTED_MODELS = {"gpt-5.2-codex"}
-        if any(m in self._model_name for m in _RESTRICTED_MODELS):
-            self._response_format = None
-            self._llm._temperature = None
-
-        # Wrap chat.chat() to pass response_format and extra headers
-        _original_chat_fn = chat.chat
-
-        async def _chat_with_format(prompt, **kwargs):
-            if self._response_format:
-                kwargs.setdefault("response_format", self._response_format)
-            return await _original_chat_fn(prompt, **kwargs)
-
-        chat.chat = _chat_with_format
+        prompt = initial_prompt
 
         self._context.n_input_tokens = 0
         self._context.n_output_tokens = 0
@@ -380,15 +853,17 @@ class TerminusKIRA(Terminus2):
 
         for episode in range(self._max_episodes):
             self._n_episodes = episode + 1
-            if not await self._session.is_session_alive():
+            if not await self._with_block_timeout(self._session.is_session_alive()):
                 self.logger.debug("Session has ended, breaking out of agent loop")
                 return episode + 1
 
             if original_instruction and self._enable_summarize:
-                proactive_summary_result = await self._check_proactive_summarization(
-                    chat,
-                    original_instruction,
-                    self._session,
+                proactive_summary_result = await self._with_block_timeout(
+                    self._check_proactive_summarization(
+                        chat,
+                        original_instruction,
+                        self._session,
+                    )
                 )
                 if proactive_summary_result:
                     prompt, subagent_refs = proactive_summary_result
@@ -422,10 +897,7 @@ class TerminusKIRA(Terminus2):
                         step_id=len(self._trajectory_steps) + 1,
                         timestamp=datetime.now(timezone.utc).isoformat(),
                         source="system",
-                        message=(
-                            "Performed context summarization"
-                            " and handoff to continue task."
-                        ),
+                        message="Performed context summarization and handoff to continue task.",
                         observation=Observation(
                             results=[
                                 ObservationResult(
@@ -480,7 +952,6 @@ class TerminusKIRA(Terminus2):
                     f"Please fix these issues and provide a proper "
                     f"{self._get_error_response_type()}."
                 )
-                # Record step for errors
                 cache_tokens_used = chat.total_cache_tokens - tokens_before_cache
                 step_cost = chat.total_cost - cost_before
                 self._trajectory_steps.append(
@@ -496,12 +967,8 @@ class TerminusKIRA(Terminus2):
                         ),
                         metrics=Metrics(
                             prompt_tokens=chat.total_input_tokens - tokens_before_input,
-                            completion_tokens=(
-                                chat.total_output_tokens - tokens_before_output
-                            ),
-                            cached_tokens=(
-                                cache_tokens_used if cache_tokens_used > 0 else None
-                            ),
+                            completion_tokens=chat.total_output_tokens - tokens_before_output,
+                            cached_tokens=cache_tokens_used if cache_tokens_used > 0 else None,
                             cost_usd=step_cost if step_cost > 0 else None,
                             prompt_token_ids=llm_response.prompt_token_ids,
                             completion_token_ids=llm_response.completion_token_ids,
@@ -511,13 +978,38 @@ class TerminusKIRA(Terminus2):
                 )
                 continue
 
-            # --- Execute action and build tool_calls (divergent) ---
-            tool_calls_list: list[ToolCall] = []
             if image_read is not None:
-                raw_result = await self._execute_image_read(
+                # File read path
+                image_read_result = await self._execute_image_read(
                     image_read, chat, original_instruction
                 )
-                limited_result = raw_result
+
+                # Capture pending state before modifying
+                was_pending_completion = self._pending_completion
+
+                # Handle task completion with double confirmation
+                if is_task_complete:
+                    if self._pending_completion:
+                        observation = image_read_result
+                    else:
+                        self._pending_completion = True
+                        observation = self._get_completion_confirmation_message(
+                            image_read_result
+                        )
+                else:
+                    self._pending_completion = False
+                    if feedback and "WARNINGS:" in feedback:
+                        observation = (
+                            f"Previous response had warnings:\n{feedback}\n\n"
+                            f"{image_read_result}"
+                        )
+                    else:
+                        observation = image_read_result
+
+                # Build tool_calls for image_read
+                tool_calls_list: list[ToolCall] = []
+                observation_results: list[ObservationResult] = []
+
                 if not self._save_raw_content_in_trajectory:
                     tool_calls_list.append(
                         ToolCall(
@@ -525,97 +1017,144 @@ class TerminusKIRA(Terminus2):
                             function_name="image_read",
                             arguments={
                                 "file_path": image_read.file_path,
-                                "image_read_instruction": (
-                                    image_read.image_read_instruction
-                                ),
+                                "image_read_instruction": image_read.image_read_instruction,
                             },
                         )
                     )
-            else:
-                timeout_occurred, raw_result = await self._execute_commands(
-                    commands, self._session,
-                )
-                limited_result = self._limit_output_length(raw_result)
-                if not self._save_raw_content_in_trajectory:
-                    for i, cmd in enumerate(commands):
+                    observation_results.append(ObservationResult(content=observation))
+                    if is_task_complete:
                         tool_calls_list.append(
                             ToolCall(
-                                tool_call_id=f"call_{episode}_{i + 1}",
-                                function_name="bash_command",
-                                arguments={
-                                    "keystrokes": cmd.keystrokes,
-                                    "duration": cmd.duration_sec,
-                                },
+                                tool_call_id=f"call_{episode}_task_complete",
+                                function_name="mark_task_complete",
+                                arguments={},
                             )
                         )
-
-            # --- Completion confirmation (common) ---
-            was_pending_completion = self._pending_completion
-
-            if is_task_complete:
-                if self._pending_completion:
-                    observation = raw_result
                 else:
-                    self._pending_completion = True
-                    observation = self._get_completion_confirmation_message(
-                        raw_result
+                    observation_results.append(ObservationResult(content=observation))
+
+                cache_tokens_used = chat.total_cache_tokens - tokens_before_cache
+                step_cost = chat.total_cost - cost_before
+                self._trajectory_steps.append(
+                    Step(
+                        step_id=len(self._trajectory_steps) + 1,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="agent",
+                        model_name=self._model_name,
+                        message=message_content,
+                        reasoning_content=llm_response.reasoning_content,
+                        tool_calls=tool_calls_list or None,
+                        observation=Observation(results=observation_results),
+                        metrics=Metrics(
+                            prompt_tokens=chat.total_input_tokens - tokens_before_input,
+                            completion_tokens=chat.total_output_tokens - tokens_before_output,
+                            cached_tokens=cache_tokens_used if cache_tokens_used > 0 else None,
+                            cost_usd=step_cost if step_cost > 0 else None,
+                            prompt_token_ids=llm_response.prompt_token_ids,
+                            completion_token_ids=llm_response.completion_token_ids,
+                            logprobs=llm_response.logprobs,
+                        ),
                     )
+                )
+                self._dump_trajectory()
+
+                if is_task_complete and was_pending_completion:
+                    return episode + 1
+
+                prompt = observation
             else:
-                self._pending_completion = False
-                if feedback and "WARNINGS:" in feedback:
-                    observation = (
-                        f"Previous response had warnings:\n{feedback}\n\n"
-                        f"{limited_result}"
+                # Commands path (existing behavior)
+                timeout_occurred, terminal_output = await self._with_block_timeout(
+                    self._execute_commands(
+                        commands,
+                        self._session,
                     )
+                )
+
+                was_pending_completion = self._pending_completion
+
+                if is_task_complete:
+                    if self._pending_completion:
+                        observation = terminal_output
+                    else:
+                        self._pending_completion = True
+                        observation = self._get_completion_confirmation_message(
+                            terminal_output
+                        )
                 else:
-                    observation = limited_result
+                    self._pending_completion = False
+                    if feedback and "WARNINGS:" in feedback:
+                        observation = (
+                            f"Previous response had warnings:\n{feedback}\n\n"
+                            f"{self._limit_output_length(terminal_output)}"
+                        )
+                    else:
+                        observation = self._limit_output_length(terminal_output)
 
-            # --- Build task_complete tool_call (common) ---
-            if not self._save_raw_content_in_trajectory and is_task_complete:
-                tool_calls_list.append(
-                    ToolCall(
-                        tool_call_id=f"call_{episode}_task_complete",
-                        function_name="mark_task_complete",
-                        arguments={},
+                # Record trajectory step
+                cache_tokens_used = chat.total_cache_tokens - tokens_before_cache
+                step_cost = chat.total_cost - cost_before
+
+                tool_calls: list[ToolCall] | None = None
+                observation_results: list[ObservationResult] = []
+
+                if not self._save_raw_content_in_trajectory:
+                    tool_calls_list: list[ToolCall] = []
+                    if commands:
+                        for i, cmd in enumerate(commands):
+                            tool_calls_list.append(
+                                ToolCall(
+                                    tool_call_id=f"call_{episode}_{i + 1}",
+                                    function_name="bash_command",
+                                    arguments={
+                                        "keystrokes": cmd.keystrokes,
+                                        "duration": cmd.duration_sec,
+                                    },
+                                )
+                            )
+                        observation_results.append(ObservationResult(content=observation))
+                    if is_task_complete:
+                        tool_calls_list.append(
+                            ToolCall(
+                                tool_call_id=f"call_{episode}_task_complete",
+                                function_name="mark_task_complete",
+                                arguments={},
+                            )
+                        )
+                        if not commands:
+                            observation_results.append(ObservationResult(content=observation))
+                    elif not commands:
+                        observation_results.append(ObservationResult(content=observation))
+                    tool_calls = tool_calls_list or None
+                else:
+                    observation_results.append(ObservationResult(content=observation))
+
+                self._trajectory_steps.append(
+                    Step(
+                        step_id=len(self._trajectory_steps) + 1,
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                        source="agent",
+                        model_name=self._model_name,
+                        message=message_content,
+                        reasoning_content=llm_response.reasoning_content,
+                        tool_calls=tool_calls,
+                        observation=Observation(results=observation_results),
+                        metrics=Metrics(
+                            prompt_tokens=chat.total_input_tokens - tokens_before_input,
+                            completion_tokens=chat.total_output_tokens - tokens_before_output,
+                            cached_tokens=cache_tokens_used if cache_tokens_used > 0 else None,
+                            cost_usd=step_cost if step_cost > 0 else None,
+                            prompt_token_ids=llm_response.prompt_token_ids,
+                            completion_token_ids=llm_response.completion_token_ids,
+                            logprobs=llm_response.logprobs,
+                        ),
                     )
                 )
+                self._dump_trajectory()
 
-            # --- Record trajectory step (common) ---
-            cache_tokens_used = chat.total_cache_tokens - tokens_before_cache
-            step_cost = chat.total_cost - cost_before
+                if is_task_complete and was_pending_completion:
+                    return episode + 1
 
-            self._trajectory_steps.append(
-                Step(
-                    step_id=len(self._trajectory_steps) + 1,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    source="agent",
-                    model_name=self._model_name,
-                    message=message_content,
-                    reasoning_content=llm_response.reasoning_content,
-                    tool_calls=tool_calls_list or None,
-                    observation=Observation(
-                        results=[ObservationResult(content=observation)]
-                    ),
-                    metrics=Metrics(
-                        prompt_tokens=chat.total_input_tokens - tokens_before_input,
-                        completion_tokens=(
-                            chat.total_output_tokens - tokens_before_output
-                        ),
-                        cached_tokens=(
-                            cache_tokens_used if cache_tokens_used > 0 else None
-                        ),
-                        cost_usd=step_cost if step_cost > 0 else None,
-                        prompt_token_ids=llm_response.prompt_token_ids,
-                        completion_token_ids=llm_response.completion_token_ids,
-                        logprobs=llm_response.logprobs,
-                    ),
-                )
-            )
-            self._dump_trajectory()
-
-            if is_task_complete and was_pending_completion:
-                return episode + 1
-
-            prompt = observation
+                prompt = observation
 
         return self._n_episodes

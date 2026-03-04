@@ -1,3 +1,3 @@
-from terminus_kira.terminus_kira import TerminusKIRA
+from terminus_kira.terminus_kira import TerminusKira
 
-__all__ = ["TerminusKIRA"]
+__all__ = ["TerminusKira"]
