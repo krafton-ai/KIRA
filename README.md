@@ -82,9 +82,8 @@ Key milestones from development history:
 | 5 | Completion Confirmation | Include original instruction in completion check |
 | 6 | Multimodal | `image_read` tool for visual analysis of terminal screenshots |
 | 7 | Completion Checklist | Multi-perspective QA checklist (test engineer, QA, user) |
-| 8 | State Verification | Pre-completion state verification in system prompt |
-| 9 | Execution Optimization | Marker-based polling and block timeout protection |
-| 10 | Temperature Fix | Set temperature to 1 when using reasoning effort |
+| 8 | Execution Optimization | Marker-based polling and block timeout protection |
+| 9 | Temperature Fix | Set temperature to 1 when using reasoning effort |
 
 ---
 
