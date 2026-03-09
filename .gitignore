@@ -10,11 +10,18 @@
 electron-app/node_modules/
 electron-app/dist/
 electron-app/build/
+KIRA-Slack/db/
+KIRA-Slack/electron-app/node_modules/
+KIRA-Slack/electron-app/dist/
+KIRA-Slack/electron-app/build/
 
 # VitePress
 vitepress-app/node_modules/
 vitepress-app/.vitepress/dist/
 vitepress-app/.vitepress/cache/
+KIRA-Slack/vitepress-app/node_modules/
+KIRA-Slack/vitepress-app/.vitepress/dist/
+KIRA-Slack/vitepress-app/.vitepress/cache/
 
 # testing
 /coverage
