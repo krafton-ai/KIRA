@@ -16,24 +16,20 @@
 </td></tr></table>
 
 <p align="center">
-  <p align="center">
-    A smarter agent harness for <a href="https://github.com/laude-institute/terminal-bench">Terminal-Bench</a>, built on <a href="https://github.com/laude-institute/terminal-bench">Terminus 2</a> with native tool calling
-    <br/>
-    <em>Simple fixes, significant gains.</em>
-  </p>
-  <p align="center">
-    <img src="https://img.shields.io/badge/Codex_5.3-75.5%25-blue?style=for-the-badge" alt="Codex 5.3: 75.5%">
-    <img src="https://img.shields.io/badge/Opus_4.6-75.7%25-blueviolet?style=for-the-badge" alt="Opus 4.6: 75.7%">
-    <img src="https://img.shields.io/badge/Gemini_3.1_Pro-74.8%25-orange?style=for-the-badge" alt="Gemini 3.1 Pro: 74.8%">
-  </p>
+  A smarter agent harness for <a href="https://github.com/laude-institute/terminal-bench">Terminal-Bench</a>, built on <a href="https://github.com/laude-institute/terminal-bench">Terminus 2</a>
+  <br/>
+  <em>Simple fixes, significant gains.</em>
 </p>
 
-## Changelog
+<p align="center">
+  <img src="https://img.shields.io/badge/Codex_5.3-75.5%25-blue?style=for-the-badge" alt="Codex 5.3: 75.5%">
+  <img src="https://img.shields.io/badge/Opus_4.6-75.7%25-blueviolet?style=for-the-badge" alt="Opus 4.6: 75.7%">
+  <img src="https://img.shields.io/badge/Gemini_3.1_Pro-74.8%25-orange?style=for-the-badge" alt="Gemini 3.1 Pro: 74.8%">
+</p>
 
-| Version | Description |
-|---|---|
-| **v1.1** | Migrated from In-Context Learning (ICL) to **native tool calling** via LLM `tools` parameter. Removed verbose JSON/XML response format instructions from system prompt — the model now receives structured tool definitions directly, resulting in a significantly shorter prompt and more reliable outputs. |
-| **v1.0** | Initial release. Fork of Terminus 2 with ICL-based JSON response parsing and full response format instructions in the system prompt. |
+## What is Terminus-KIRA?
+
+Terminus-KIRA is an agent harness for [Terminal-Bench](https://github.com/laude-institute/terminal-bench), built on top of [Terminus 2](https://github.com/laude-institute/terminal-bench). It boosts frontier model performance on Terminal-Bench through a set of minimal but effective harness-level improvements — native tool calling, multimodal support, execution optimization, and smarter completion verification.
 
 ---
 
@@ -42,7 +38,6 @@
 - **Native Tool Calling** — Replaces ICL JSON/XML parsing with the LLM `tools` parameter for structured, reliable outputs
 - **Image Analysis (Multimodal)** — `image_read` tool for base64-encoded image analysis directly from the terminal
 - **Marker-based Polling** — Early command completion detection using echo markers, cutting unnecessary wait time
-- **Block Timeout Protection** — 10-minute timeout on infrastructure API calls to prevent indefinite hangs
 - **Smart Completion Verification** — Double-confirmation checklist covering requirements, robustness, and multi-perspective QA (test engineer, QA engineer, user)
 - **Prompt Caching** — Anthropic ephemeral caching on recent messages to reduce latency and cost
 
@@ -133,6 +128,15 @@ If you found Terminus-KIRA useful, please cite us as:
       url={https://github.com/krafton-ai/kira},
 }
 ```
+
+---
+
+## Changelog
+
+| Version | Description |
+|---|---|
+| **v1.1** | Migrated from In-Context Learning (ICL) to **native tool calling** via LLM `tools` parameter. Removed verbose JSON/XML response format instructions from system prompt — the model now receives structured tool definitions directly, resulting in a significantly shorter prompt and more reliable outputs. |
+| **v1.0** | Initial release. Fork of Terminus 2 with ICL-based JSON response parsing and full response format instructions in the system prompt. |
 
 ---
 KRAFTON AI & Ludo Robotics
