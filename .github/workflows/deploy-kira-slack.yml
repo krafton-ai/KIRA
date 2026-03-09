@@ -1,10 +1,10 @@
-# KIRA GitHub Actions Workflow
+# KIRA-Slack GitHub Actions Workflow
 # Builds and deploys using 3 parallel jobs:
 #   - deploy-mac: Builds macOS app on self-hosted runner (with Apple code signing)
 #   - deploy-windows: Builds Windows app on GitHub-hosted Windows runner
 #   - deploy-docs: Deploys VitePress documentation on GitHub-hosted Ubuntu runner
 
-name: Build and Deploy
+name: "KIRA-Slack: Build and Deploy"
 
 on:
   push:
@@ -13,6 +13,7 @@ on:
 
 env:
   NODE_VERSION: "22"
+  WORKING_DIR: KIRA-Slack
 
 jobs:
   # ===========================
@@ -48,7 +49,7 @@ jobs:
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          cd electron-app && npm ci
+          cd ${{ env.WORKING_DIR }}/electron-app && npm ci
 
       - name: Extract version from tag and update package.json
         run: |
@@ -56,7 +57,7 @@ jobs:
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           VERSION=${GITHUB_REF_NAME#v}
           echo "📦 Version: $VERSION"
-          cd electron-app
+          cd ${{ env.WORKING_DIR }}/electron-app
           npm version $VERSION --no-git-tag-version
 
       - name: Build and Deploy macOS App
@@ -72,7 +73,7 @@ jobs:
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          cd electron-app
+          cd ${{ env.WORKING_DIR }}/electron-app
           npm run deploy:mac
 
       - name: Upload macOS artifacts
@@ -80,8 +81,8 @@ jobs:
         with:
           name: macos-build-${{ github.ref_name }}
           path: |
-            electron-app/dist/*.dmg
-            electron-app/dist/*.zip
+            ${{ env.WORKING_DIR }}/electron-app/dist/*.dmg
+            ${{ env.WORKING_DIR }}/electron-app/dist/*.zip
           retention-days: 30
 
   # ===========================
@@ -103,7 +104,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd electron-app
+          cd ${{ env.WORKING_DIR }}/electron-app
           npm ci
 
       - name: Extract version from tag and update package.json
@@ -111,7 +112,7 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "📦 Version: $VERSION"
-          cd electron-app
+          cd ${{ env.WORKING_DIR }}/electron-app
           npm version $VERSION --no-git-tag-version
 
       - name: Build and Deploy Windows App
@@ -121,7 +122,7 @@ jobs:
           AWS_DEFAULT_REGION: ap-northeast-2
           CSC_IDENTITY_AUTO_DISCOVERY: false  # Skip code signing
         run: |
-          cd electron-app
+          cd ${{ env.WORKING_DIR }}/electron-app
           npm run deploy:win
 
       - name: Upload Windows artifacts
@@ -129,7 +130,7 @@ jobs:
         with:
           name: windows-build-${{ github.ref_name }}
           path: |
-            electron-app/dist/*.exe
+            ${{ env.WORKING_DIR }}/electron-app/dist/*.exe
           retention-days: 30
 
   # ===========================
@@ -152,19 +153,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd vitepress-app
+          cd ${{ env.WORKING_DIR }}/vitepress-app
           npm ci
 
       - name: Extract version and update docs
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "📦 Version: $VERSION"
-          cd vitepress-app
+          cd ${{ env.WORKING_DIR }}/vitepress-app
           node scripts/sync-version.js $VERSION
 
       - name: Build VitePress docs
         run: |
-          cd vitepress-app
+          cd ${{ env.WORKING_DIR }}/vitepress-app
           npm run docs:build
 
       - name: Configure AWS credentials
@@ -176,7 +177,7 @@ jobs:
 
       - name: Deploy to S3
         run: |
-          cd vitepress-app
+          cd ${{ env.WORKING_DIR }}/vitepress-app
           aws s3 sync .vitepress/dist s3://kira-releases --delete --exclude 'download/*' --exclude 'videos/*'
 
       - name: Invalidate CloudFront cache

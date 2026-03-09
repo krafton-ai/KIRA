@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # AI model settings (selectable in Electron app, auto-converted when using Vertex AI)
     MODEL_FOR_SIMPLE: str = "sonnet"     # For decision-making (bot call detection, classification, etc.)
     MODEL_FOR_MODERATE: str = "sonnet"   # For analysis (memory management, summarization, etc.)
-    MODEL_FOR_COMPLEX: str = "sonnet"    # For tasks (core task execution)
+    MODEL_FOR_COMPLEX: str = "opus"    # For tasks (core task execution)
 
     # Slack related
     SLACK_BOT_TOKEN: str = ""
@@ -151,8 +151,8 @@ class Settings(BaseSettings):
             # Convert user-selected model to Vertex AI model name
             vertex_model_map = {
                 "haiku": "claude-haiku-4-5@20251001",
-                "sonnet": "claude-sonnet-4-5@20250929",
-                "opus": "claude-opus-4-5@20251101",
+                "sonnet": "claude-sonnet-4-6",
+                "opus": "claude-opus-4-6",
             }
             object.__setattr__(self, 'MODEL_FOR_SIMPLE', vertex_model_map.get(self.MODEL_FOR_SIMPLE, self.MODEL_FOR_SIMPLE))
             object.__setattr__(self, 'MODEL_FOR_MODERATE', vertex_model_map.get(self.MODEL_FOR_MODERATE, self.MODEL_FOR_MODERATE))
