@@ -8,12 +8,15 @@ from fastapi import FastAPI
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
+from kiraclaw_agentd.channel_delivery import ChannelDelivery
 from kiraclaw_agentd.engine import KiraClawEngine, RunResult, list_available_skills
 from kiraclaw_agentd.memory_runtime import MemoryRuntime
+from kiraclaw_agentd.schedule_store import read_schedules
 from kiraclaw_agentd.scheduler_runtime import SchedulerRuntime
 from kiraclaw_agentd.session_manager import SessionManager
 from kiraclaw_agentd.settings import get_settings
 from kiraclaw_agentd.slack_adapter import SlackGateway
+from kiraclaw_agentd.telegram_adapter import TelegramGateway
 from kiraclaw_agentd.watch_models import WatchSpec
 from kiraclaw_agentd.watch_runtime import WatchRuntime
 
@@ -40,7 +43,8 @@ class WatchRequest(BaseModel):
     interval_minutes: int
     condition: str
     action: str
-    channel_id: str | None = None
+    channel_type: str | None = None
+    channel_target: str | None = None
     provider: str | None = None
     model: str | None = None
     is_enabled: bool = True
@@ -57,13 +61,17 @@ def create_app() -> FastAPI:
         on_record_complete=memory_runtime.enqueue_save,
     )
     slack_gateway = SlackGateway(session_manager, settings)
-    scheduler_runtime = SchedulerRuntime(settings, session_manager, slack_gateway)
+    telegram_gateway = TelegramGateway(session_manager, settings)
+    channel_delivery = ChannelDelivery(slack_gateway=slack_gateway, telegram_gateway=telegram_gateway)
+    scheduler_runtime = SchedulerRuntime(settings, session_manager, channel_delivery)
     watch_runtime = WatchRuntime(settings, session_manager)
 
     app = FastAPI(title="KiraClaw Agentd", version="0.1.0")
     app.state.session_manager = session_manager
     app.state.memory_runtime = memory_runtime
     app.state.slack_gateway = slack_gateway
+    app.state.telegram_gateway = telegram_gateway
+    app.state.channel_delivery = channel_delivery
     app.state.scheduler_runtime = scheduler_runtime
     app.state.watch_runtime = watch_runtime
 
@@ -72,6 +80,7 @@ def create_app() -> FastAPI:
         await engine.start()
         await memory_runtime.start()
         await slack_gateway.start()
+        await telegram_gateway.start()
         await scheduler_runtime.start()
         await watch_runtime.start()
 
@@ -79,6 +88,7 @@ def create_app() -> FastAPI:
     async def shutdown() -> None:
         await watch_runtime.stop()
         await scheduler_runtime.stop()
+        await telegram_gateway.stop()
         await slack_gateway.stop()
         await memory_runtime.stop()
         await session_manager.stop()
@@ -124,6 +134,12 @@ def create_app() -> FastAPI:
             "slack_last_error": slack_gateway.last_error,
             "slack_identity": slack_gateway.identity,
             "slack_socket_mode_validated": slack_gateway.socket_mode_validated,
+            "telegram_enabled": settings.telegram_enabled,
+            "telegram_configured": telegram_gateway.configured,
+            "telegram_state": telegram_gateway.state,
+            "telegram_last_error": telegram_gateway.last_error,
+            "telegram_identity": telegram_gateway.identity,
+            "telegram_allowed_names": settings.telegram_allowed_names,
             "mcp_state": engine.mcp_runtime.state,
             "mcp_last_error": engine.mcp_runtime.last_error,
             "mcp_loaded_servers": engine.mcp_runtime.loaded_server_names,
@@ -161,6 +177,14 @@ def create_app() -> FastAPI:
     @app.get("/v1/watches")
     async def watches() -> dict:
         return {"watches": [watch.model_dump() for watch in watch_runtime.list_watches()]}
+
+    @app.get("/v1/schedules")
+    async def schedules() -> dict:
+        rows = read_schedules(settings.schedule_file) if settings.schedule_file else []
+        return {
+            "schedules": rows,
+            "schedule_file": str(settings.schedule_file) if settings.schedule_file else None,
+        }
 
     @app.get("/v1/skills")
     async def skills() -> dict:

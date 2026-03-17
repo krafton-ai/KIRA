@@ -15,6 +15,7 @@ The first principle is to keep the architecture small:
 This folder starts with the smallest useful slice:
 
 - architecture and migration docs
+ - bridge release checklist
 - a minimal `agentd` built on `krim-sdk`
 - a desktop workspace that stays part of the product plan
 - Slack-first product assumptions
@@ -37,6 +38,7 @@ KiraClaw/
     desktop/    # Desktop shell for the packaged product
   docs/
     architecture.md
+    bridge-release-checklist.md
     migration-from-kira-slack.md
   pyproject.toml
   package.json

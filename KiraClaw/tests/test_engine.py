@@ -62,10 +62,10 @@ def test_configure_tools_adds_skill_tool_only_when_skills_exist(tmp_path) -> Non
     )
     settings.ensure_directories()
 
-    tools, skill_names = _configure_tools(settings)
+    tools, skill_rows = _configure_tools(settings)
 
     assert "skill" not in [tool.name for tool in tools]
-    assert skill_names == []
+    assert skill_rows == []
 
 
 def test_configure_tools_discovers_workspace_skill_md(tmp_path) -> None:
@@ -85,10 +85,18 @@ def test_configure_tools_discovers_workspace_skill_md(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    tools, skill_names = _configure_tools(settings)
+    tools, skill_rows = _configure_tools(settings)
 
     assert "skill" in [tool.name for tool in tools]
-    assert skill_names == ["jira-reader"]
+    assert skill_rows == [
+        {
+            "id": "jira-reader",
+            "name": "jira-reader",
+            "description": "Read Jira carefully",
+            "path": str(skill_dir),
+            "source": "workspace",
+        }
+    ]
 
 
 def test_list_available_skills_reports_workspace_source(tmp_path) -> None:

@@ -1,10 +1,11 @@
 import { applyAgentIdentity } from "./branding.mjs";
 import { clearChatThread, bindChatActions } from "./chat.mjs";
-import { byId, initializePasswordToggles } from "./dom.mjs";
+import { byId, initializePasswordToggles, setText } from "./dom.mjs";
 import { updateHomeStatus, bindHomeActions } from "./home.mjs";
 import { bindNavigation } from "./navigation.mjs";
 import { bindSettingsActions, applySettingsToForm, collectSettingsUpdates, setSettingsStatus } from "./settings.mjs";
 import { bindSkillsActions, renderSkillsState } from "./skills.mjs";
+import { bindScheduleActions, renderSchedulesState } from "./schedules.mjs";
 import { state } from "./state.mjs";
 import { bindWatchActions, collectWatchPayload, getNewWatchId, renderWatchState, setWatchStatus, validateWatchPayload } from "./watch.mjs";
 
@@ -29,6 +30,9 @@ async function refreshActiveView() {
   }
   if (state.activeView === "skills") {
     await loadSkills();
+  }
+  if (state.activeView === "schedules") {
+    await loadSchedules();
   }
 }
 
@@ -105,6 +109,21 @@ async function loadSkills() {
     state.skills = { skills: [] };
     setSettingsStatus(`Skill load failed: ${error.message}`);
     renderSkillsState(state);
+  }
+}
+
+async function loadSchedules() {
+  try {
+    const response = await api.getSchedules();
+    state.schedules = response.schedules || [];
+    state.scheduleFile = response.schedule_file || "";
+    state.scheduleError = "";
+    renderSchedulesState(state);
+  } catch (error) {
+    state.schedules = [];
+    state.scheduleFile = "";
+    state.scheduleError = error.message;
+    renderSchedulesState(state);
   }
 }
 
@@ -318,6 +337,9 @@ function bindActions() {
       if (viewName === "skills") {
         loadSkills().catch(() => {});
       }
+      if (viewName === "schedules") {
+        loadSchedules().catch(() => {});
+      }
       refreshRuntime().catch(() => {});
     },
   });
@@ -395,6 +417,9 @@ function bindActions() {
         setSettingsStatus(`Open Folder failed: ${error.message}`);
       }
     },
+  });
+  bindScheduleActions({
+    onReload: loadSchedules,
   });
 
   window.addEventListener("focus", () => {

@@ -111,8 +111,11 @@ function runtimeValueForField(state, field) {
     KIRACLAW_AGENT_NAME: state.runtime.agent_name,
     KIRACLAW_PROVIDER: state.runtime.provider,
     KIRACLAW_MODEL: state.runtime.model,
+    SLACK_ENABLED: String(Boolean(state.runtime.slack_enabled)),
     SLACK_TEAM_ID: state.runtime.slack_identity && state.runtime.slack_identity.team_id,
     SLACK_ALLOWED_NAMES: state.runtime.slack_allowed_names,
+    TELEGRAM_ENABLED: String(Boolean(state.runtime.telegram_enabled)),
+    TELEGRAM_ALLOWED_NAMES: state.runtime.telegram_allowed_names,
     CHROME_ENABLED: String(Boolean(state.runtime.browser_enabled)),
     FILESYSTEM_BASE_DIR: state.runtime.workspace_dir,
   };
@@ -170,6 +173,44 @@ function syncExternalMcpFields() {
   }
 }
 
+function hasConfiguredValue(state, field) {
+  return Boolean(String(state.config[field] ?? "").trim());
+}
+
+function syncChannelCards(state) {
+  const slackInput = byId("SLACK_ENABLED");
+  const telegramInput = byId("TELEGRAM_ENABLED");
+  const slackActive = slackInput ? slackInput.checked : normalizeBoolean(effectiveFieldValue(state, "SLACK_ENABLED"));
+  const telegramActive = telegramInput ? telegramInput.checked : normalizeBoolean(effectiveFieldValue(state, "TELEGRAM_ENABLED"));
+
+  const channelStates = [
+    ["slack", slackActive],
+    ["telegram", telegramActive],
+  ];
+  for (const [name, active] of channelStates) {
+    const card = byId(`channel-card-${name}`);
+    const toggle = byId(name === "slack" ? "SLACK_ENABLED" : "TELEGRAM_ENABLED");
+    if (card) {
+      card.classList.toggle("active", active);
+    }
+    if (toggle) {
+      toggle.checked = active;
+    }
+  }
+
+  const count = channelStates.filter(([, active]) => active).length;
+  setText(byId("channel-available-count"), `${count} Active`);
+
+  const slackFields = byId("slack-channel-fields");
+  const telegramFields = byId("telegram-channel-fields");
+  if (slackFields) {
+    slackFields.disabled = !slackActive;
+  }
+  if (telegramFields) {
+    telegramFields.disabled = !telegramActive;
+  }
+}
+
 export function applySettingsToForm(state) {
   for (const field of SETTINGS_FIELDS) {
     const input = byId(field);
@@ -197,6 +238,7 @@ export function applySettingsToForm(state) {
   renderRemoteMcpServers(parseRemoteMcpServers(state.config.REMOTE_MCP_SERVERS));
   syncMcpView(state);
   syncExternalMcpFields();
+  syncChannelCards(state);
 }
 
 export function collectSettingsUpdates(state) {
@@ -309,6 +351,7 @@ export function bindSettingsActions({ state, onReload, onSave, onSaveAndRestart 
   });
 
   const externalToggleFields = ["CHROME_ENABLED", "PERPLEXITY_ENABLED", "GITLAB_ENABLED", "MS365_ENABLED", "ATLASSIAN_ENABLED", "TABLEAU_ENABLED"];
+  const channelToggleFields = ["SLACK_ENABLED", "TELEGRAM_ENABLED"];
 
   for (const field of externalToggleFields) {
     byId(field)?.addEventListener("change", () => {
@@ -317,9 +360,16 @@ export function bindSettingsActions({ state, onReload, onSave, onSaveAndRestart 
     });
   }
 
+  for (const field of channelToggleFields) {
+    byId(field)?.addEventListener("change", () => {
+      markSettingsDirty(state);
+      syncChannelCards(state);
+    });
+  }
+
   for (const field of SETTINGS_FIELDS) {
     const input = byId(field);
-    if (!input || field === "KIRACLAW_PROVIDER" || externalToggleFields.includes(field)) {
+    if (!input || field === "KIRACLAW_PROVIDER" || externalToggleFields.includes(field) || channelToggleFields.includes(field)) {
       continue;
     }
 

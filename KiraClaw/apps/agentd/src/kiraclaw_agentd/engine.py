@@ -14,6 +14,7 @@ from kiraclaw_agentd.mcp_runtime import McpRuntime
 from kiraclaw_agentd.settings import KiraClawSettings
 from kiraclaw_agentd.slack_tools import build_slack_tools
 from kiraclaw_agentd.system_prompt import build_system_prompt
+from kiraclaw_agentd.telegram_tools import build_telegram_tools
 
 
 @dataclass
@@ -89,6 +90,7 @@ def list_available_skills(settings: KiraClawSettings) -> list[dict[str, str]]:
 
 def _configure_tools(settings: KiraClawSettings):
     skills = discover_available_skills(settings)
+    skill_rows = list_available_skills(settings)
     if skills:
         tools, skill_tool = default_tools_with_skills()
     else:
@@ -110,7 +112,8 @@ def _configure_tools(settings: KiraClawSettings):
         skill_tool.configure(skills)
 
     tools.extend(build_slack_tools(settings))
-    return tools, list(skills.keys())
+    tools.extend(build_telegram_tools(settings))
+    return tools, skill_rows
 
 
 def _ensure_provider_credentials(settings: KiraClawSettings, provider: str) -> None:
@@ -158,7 +161,7 @@ class KiraClawEngine:
         selected_provider = provider or self.settings.provider
         selected_model = model or self.settings.model
         _ensure_provider_credentials(self.settings, selected_provider)
-        tools, skill_names = _configure_tools(self.settings)
+        tools, skill_rows = _configure_tools(self.settings)
         tool_names = [tool.name for tool in tools]
         mcp_tools = list(self.mcp_runtime.tools)
         mcp_tool_names = [tool.name for tool in mcp_tools]
@@ -171,7 +174,7 @@ class KiraClawEngine:
                 max_tokens=self.settings.max_tokens,
             ),
             provider=selected_provider,
-            system_prompt=build_system_prompt(self.settings.agent_name, tool_names, skill_names, mcp_tool_names),
+            system_prompt=build_system_prompt(self.settings.agent_name, tool_names, skill_rows, mcp_tool_names),
             tools=tools,
             mcp_tools=mcp_tools,
             options=AgentOptions(

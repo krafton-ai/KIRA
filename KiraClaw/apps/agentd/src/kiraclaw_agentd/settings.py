@@ -122,6 +122,9 @@ class KiraClawSettings(BaseSettings):
     slack_signing_secret: str = ""
     slack_team_id: str = ""
     slack_allowed_names: str = ""
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_allowed_names: str = ""
     desktop_app_enabled: bool = True
     single_gateway_per_host: bool = True
     session_scope: str = "session-lane"
@@ -294,6 +297,8 @@ class KiraClawSettings(BaseSettings):
             "atlassian_enabled": "ATLASSIAN_ENABLED",
             "tableau_enabled": "TABLEAU_ENABLED",
             "browser_enabled": "CHROME_ENABLED",
+            "slack_enabled": "SLACK_ENABLED",
+            "telegram_enabled": "TELEGRAM_ENABLED",
         }
         for field_name, legacy_key in legacy_bool_field_map.items():
             if field_name in explicit_fields:
@@ -307,6 +312,8 @@ class KiraClawSettings(BaseSettings):
             "slack_app_token": "SLACK_APP_TOKEN",
             "slack_signing_secret": "SLACK_SIGNING_SECRET",
             "slack_team_id": "SLACK_TEAM_ID",
+            "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
+            "telegram_allowed_names": "TELEGRAM_ALLOWED_NAMES",
             "perplexity_api_key": "PERPLEXITY_API_KEY",
             "gitlab_api_url": "GITLAB_API_URL",
             "gitlab_personal_access_token": "GITLAB_PERSONAL_ACCESS_TOKEN",

@@ -3,6 +3,7 @@ import { getAgentName } from "./branding.mjs";
 import { byId, escapeHtml } from "./dom.mjs";
 
 let chatBusy = false;
+const FILE_PATH_PATTERN = /(\/(?:Users|tmp|private|var|Volumes|opt|Applications|Library)[^\s<>"']*)/g;
 
 export function clearChatThread(state) {
   const agentName = getAgentName(state);
@@ -34,7 +35,7 @@ function appendChatMessage(state, role, text, { meta = "", pending = false } = {
   message.innerHTML = `
     <div class="terminal-line">
       <span class="terminal-prefix">${role === "user" ? "You" : escapeHtml(getAgentName(state))}</span>
-      <div class="terminal-text">${escapeHtml(text).replace(/\n/g, "<br>")}${pendingSuffix}</div>
+      <div class="terminal-text">${renderTerminalText(text)}${pendingSuffix}</div>
     </div>
     ${metaMarkup}
   `;
@@ -54,7 +55,7 @@ function replaceChatMessage(message, state, role, text, { meta = "", pending = f
   message.innerHTML = `
     <div class="terminal-line">
       <span class="terminal-prefix">${role === "user" ? "You" : escapeHtml(getAgentName(state))}</span>
-      <div class="terminal-text">${escapeHtml(text).replace(/\n/g, "<br>")}${pendingSuffix}</div>
+      <div class="terminal-text">${renderTerminalText(text)}${pendingSuffix}</div>
     </div>
     ${metaMarkup}
   `;
@@ -76,6 +77,31 @@ function summarizeToolEvents(toolEvents) {
   }
 
   return `Used: ${[...counts.entries()].map(([name, count]) => count > 1 ? `${name} x${count}` : name).join(", ")}`;
+}
+
+function renderTerminalText(text) {
+  const source = String(text ?? "");
+  return source
+    .split("\n")
+    .map((line) => renderTerminalLine(line))
+    .join("<br>");
+}
+
+function renderTerminalLine(line) {
+  let lastIndex = 0;
+  let html = "";
+  FILE_PATH_PATTERN.lastIndex = 0;
+
+  for (const match of line.matchAll(FILE_PATH_PATTERN)) {
+    const [fullMatch] = match;
+    const matchIndex = match.index ?? 0;
+    html += escapeHtml(line.slice(lastIndex, matchIndex));
+    html += `<button type="button" class="terminal-path-link" data-open-path="${escapeHtml(fullMatch)}">${escapeHtml(fullMatch)}</button>`;
+    lastIndex = matchIndex + fullMatch.length;
+  }
+
+  html += escapeHtml(line.slice(lastIndex));
+  return html;
 }
 
 function setChatBusy(isBusy) {
@@ -156,10 +182,25 @@ async function sendChat({ api, state, onAfterSend }) {
 
 export function bindChatActions({ api, state, onAfterSend }) {
   const input = byId("chat-input");
+  const thread = byId("chat-thread");
   let composing = false;
 
   byId("clear-chat")?.addEventListener("click", () => clearChatThread(state));
   byId("send-chat")?.addEventListener("click", () => sendChat({ api, state, onAfterSend }));
+  thread?.addEventListener("click", async (event) => {
+    const target = event.target.closest("[data-open-path]");
+    if (!target) {
+      return;
+    }
+
+    const targetPath = target.getAttribute("data-open-path");
+    if (!targetPath) {
+      return;
+    }
+
+    event.preventDefault();
+    await api.openPath(targetPath);
+  });
 
   input?.addEventListener("compositionstart", () => {
     composing = true;

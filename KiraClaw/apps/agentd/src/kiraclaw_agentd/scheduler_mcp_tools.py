@@ -51,6 +51,19 @@ async def add_schedule(args: dict[str, Any]) -> dict[str, Any]:
     if error:
         return mcp_text_result({"success": False, "error": True, "message": error}, is_error=True)
 
+    channel_target = str(args.get("channel_target") or args.get("channel_id") or "").strip()
+    channel_type = str(args.get("channel_type") or "").strip().lower()
+    if not channel_target:
+        return mcp_text_result(
+            {"success": False, "error": True, "message": "channel_target is required."},
+            is_error=True,
+        )
+    if channel_type not in {"", "slack", "telegram"}:
+        return mcp_text_result(
+            {"success": False, "error": True, "message": "channel_type must be 'slack' or 'telegram'."},
+            is_error=True,
+        )
+
     async with _schedule_file_lock:
         schedule_file = _schedule_file()
         schedules = read_schedules(schedule_file)
@@ -61,7 +74,8 @@ async def add_schedule(args: dict[str, Any]) -> dict[str, Any]:
             "schedule_value": args["schedule_value"],
             "user": args["user_id"],
             "text": args["text"],
-            "channel": args["channel_id"],
+            "channel_type": channel_type or "slack",
+            "channel_target": channel_target,
             "is_enabled": args.get("is_enabled", True),
         }
         schedules.append(new_schedule)
@@ -102,14 +116,14 @@ async def remove_schedule(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_schedules(args: dict[str, Any]) -> dict[str, Any]:
-    channel_id_filter = args.get("channel_id")
+    channel_target_filter = args.get("channel_target") or args.get("channel_id")
     schedules = read_schedules(_schedule_file())
     if not schedules:
         return mcp_text_result({"success": True, "message": "No registered schedules.", "schedules": []})
 
     visible: list[dict[str, Any]] = []
     for schedule in schedules:
-        if channel_id_filter and schedule.get("channel") != channel_id_filter:
+        if channel_target_filter and schedule.get("channel_target") != channel_target_filter:
             continue
 
         if schedule.get("schedule_type") == "date":
@@ -127,7 +141,8 @@ def list_schedules(args: dict[str, Any]) -> dict[str, Any]:
                 "schedule_type": schedule.get("schedule_type"),
                 "schedule_value": schedule.get("schedule_value"),
                 "user": schedule.get("user"),
-                "channel": schedule.get("channel"),
+                "channel_type": schedule.get("channel_type"),
+                "channel_target": schedule.get("channel_target"),
                 "text": schedule.get("text"),
                 "is_enabled": schedule.get("is_enabled"),
             }
@@ -204,10 +219,22 @@ def build_scheduler_tool_specs() -> list[McpToolSpec]:
                         "type": "string",
                         "description": "Complete command that the AI employee will receive when schedule executes",
                     },
-                    "channel_id": {"type": "string", "description": "Channel ID where schedule will execute"},
+                    "channel_type": {
+                        "type": "string",
+                        "enum": ["slack", "telegram"],
+                        "description": "Delivery channel type. Defaults to 'slack' if omitted.",
+                    },
+                    "channel_target": {
+                        "type": "string",
+                        "description": "Delivery target ID. Slack uses channel ID, Telegram uses chat ID.",
+                    },
+                    "channel_id": {
+                        "type": "string",
+                        "description": "Legacy Slack channel ID alias for channel_target.",
+                    },
                     "is_enabled": {"type": "boolean", "description": "Whether schedule is enabled (default: true)"},
                 },
-                "required": ["name", "schedule_type", "schedule_value", "user_id", "text", "channel_id"],
+                "required": ["name", "schedule_type", "schedule_value", "user_id", "text", "channel_target"],
             },
             handler=add_schedule,
         ),
@@ -229,9 +256,13 @@ def build_scheduler_tool_specs() -> list[McpToolSpec]:
             input_schema={
                 "type": "object",
                 "properties": {
+                    "channel_target": {
+                        "type": "string",
+                        "description": "Specify delivery target to view only schedules for that target.",
+                    },
                     "channel_id": {
                         "type": "string",
-                        "description": "Specify channel ID to view only schedules for that channel.",
+                        "description": "Legacy Slack channel ID alias for channel_target.",
                     }
                 },
             },

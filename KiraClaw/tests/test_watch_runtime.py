@@ -56,6 +56,8 @@ def test_watch_runtime_executes_due_watch(tmp_path) -> None:
             interval_minutes=1,
             condition="If there is something blocked.",
             action="Send a concise Slack update.",
+            channel_type="telegram",
+            channel_target="123456",
         )
         await runtime.upsert_watch(watch)
 
@@ -70,6 +72,9 @@ def test_watch_runtime_executes_due_watch(tmp_path) -> None:
         assert session_manager.calls[0]["session_id"] == f"watch:{watch.watch_id}"
         assert "Watch focus:" in session_manager.calls[0]["prompt"]
         assert "Condition to evaluate:" in session_manager.calls[0]["prompt"]
+        assert "Default delivery target:" in session_manager.calls[0]["prompt"]
+        assert "channel_type: telegram" in session_manager.calls[0]["prompt"]
+        assert "channel_target: 123456" in session_manager.calls[0]["prompt"]
         runs = runtime.list_runs(limit=10, watch_id=watch.watch_id)
         assert len(runs) == 1
         assert runs[0].summary == "No action needed."

@@ -40,6 +40,7 @@ should preserve the old updater lineage.
 
 Use:
 
+- `npm run verify:bridge`
 - `npm run build:bridge`
 - `npm run build:bridge:mac`
 - `npm run build:bridge:win`
@@ -66,6 +67,15 @@ Smoke build scope:
 - targets a local packaged app smoke run first
 - keeps the same staged `process.resourcesPath/kiraclaw` layout so daemon startup can be checked before release signing work
 
-Current bridge assumption:
+Current bridge runtime behavior:
 
-- `uv` is available on the host machine, as it was in the KIRA-Slack line
+- packaged bridge builds try to auto-install `uv` on the target machine if it is missing
+- dev mode still expects the local development environment to be set up already
+
+Bridge preflight currently verifies:
+
+- local `node` and `npm`
+- bridge identity and updater config shape
+- desktop syntax checks
+- full KiraClaw test suite
+- packaged smoke bridge resource layout

@@ -64,6 +64,9 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   getSkills() {
     return request("/v1/skills");
   },
+  getSchedules() {
+    return request("/v1/schedules");
+  },
   getWatches() {
     return request("/v1/watches");
   },

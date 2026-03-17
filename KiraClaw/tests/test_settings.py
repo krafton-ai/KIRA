@@ -12,10 +12,14 @@ def _write_legacy_state(home: Path, workspace: Path) -> None:
     (legacy_dir / "config.env").write_text(
         "\n".join(
             [
+                'SLACK_ENABLED="false"',
                 'SLACK_BOT_TOKEN="legacy-bot-token"',
                 'SLACK_APP_TOKEN="legacy-app-token"',
                 'SLACK_SIGNING_SECRET="legacy-signing-secret"',
                 'SLACK_TEAM_ID="legacy-team"',
+                'TELEGRAM_ENABLED="true"',
+                'TELEGRAM_BOT_TOKEN="legacy-telegram-token"',
+                'TELEGRAM_ALLOWED_NAMES="jiho, 전지호"',
                 'BOT_AUTHORIZED_USERS_EN="Jiho Jeon, Kris Choi"',
                 'BOT_AUTHORIZED_USERS_KR="전지호"',
                 'BOT_NAME="KIRA"',
@@ -100,8 +104,12 @@ def test_auto_mode_prefers_legacy_kira_home(tmp_path, monkeypatch) -> None:
     assert settings.browser_enabled is True
     assert settings.browser_profile_dir == workspace / "chrome_profile"
     assert settings.browser_output_dir == workspace / "files"
+    assert settings.slack_enabled is False
     assert settings.slack_bot_token == "legacy-bot-token"
     assert settings.slack_allowed_names == "Jiho Jeon, Kris Choi, 전지호"
+    assert settings.telegram_enabled is True
+    assert settings.telegram_bot_token == "legacy-telegram-token"
+    assert settings.telegram_allowed_names == "jiho, 전지호"
     assert settings.legacy_config_loaded is True
     assert settings.active_config_file == home / ".kira" / "config.env"
     assert settings.credential_file == home / ".kira" / "credential.json"
@@ -138,6 +146,9 @@ def test_explicit_modern_home_keeps_openai_provider(tmp_path, monkeypatch) -> No
     assert settings.model is None
     assert settings.agent_name == "KIRA"
     assert settings.slack_allowed_names == ""
+    assert settings.telegram_enabled is False
+    assert settings.telegram_bot_token == ""
+    assert settings.telegram_allowed_names == ""
     assert settings.skills_enabled is True
     assert settings.mcp_enabled is True
     assert settings.mcp_time_enabled is True

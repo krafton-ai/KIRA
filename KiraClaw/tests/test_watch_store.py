@@ -25,6 +25,33 @@ def test_watch_store_round_trips_specs(tmp_path) -> None:
     assert loaded[0].condition == "If a blocked issue appears."
 
 
+def test_watch_store_migrates_legacy_channel_id_to_slack(tmp_path) -> None:
+    watch_file = tmp_path / "watch_data" / "watches.json"
+    watch_file.parent.mkdir(parents=True, exist_ok=True)
+    watch_file.write_text(
+        """
+[
+  {
+    "watch_id": "watch-1",
+    "interval_minutes": 30,
+    "condition": "If there is a new update.",
+    "action": "Post it.",
+    "channel_id": "C123",
+    "is_enabled": true
+  }
+]
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    loaded = read_watches(watch_file)
+
+    assert len(loaded) == 1
+    assert loaded[0].channel_type == "slack"
+    assert loaded[0].channel_target == "C123"
+
+
 def test_watch_state_store_records_recent_runs(tmp_path) -> None:
     state_file = tmp_path / "watch_data" / "state.json"
     store = WatchStateStore(state_file, history_limit=2)

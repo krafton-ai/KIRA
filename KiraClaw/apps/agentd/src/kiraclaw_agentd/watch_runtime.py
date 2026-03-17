@@ -172,7 +172,8 @@ class WatchRuntime:
                 "source": "watch",
                 "watch_id": watch.watch_id,
                 "watch_name": _watch_label(watch),
-                "watch_channel_id": watch.channel_id or "",
+                "watch_channel_type": watch.channel_type or "",
+                "watch_channel_target": watch.channel_target or "",
                 "watch_interval_minutes": str(watch.interval_minutes),
             },
         )
@@ -198,11 +199,12 @@ def _build_watch_prompt(watch: WatchSpec) -> str:
         ]
     )
 
-    if watch.channel_id:
+    if watch.channel_target:
         lines.extend(
             [
-                "Default Slack channel context:",
-                watch.channel_id,
+                "Default delivery target:",
+                f"- channel_type: {watch.channel_type or 'slack'}",
+                f"- channel_target: {watch.channel_target}",
             ]
         )
 

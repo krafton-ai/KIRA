@@ -8,10 +8,10 @@ from typing import Any
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from kiraclaw_agentd.channel_delivery import ChannelDelivery
 from kiraclaw_agentd.schedule_store import ensure_schedule_file, read_schedules
 from kiraclaw_agentd.session_manager import RunRecord, SessionManager
 from kiraclaw_agentd.settings import KiraClawSettings
-from kiraclaw_agentd.slack_adapter import SlackGateway
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +21,11 @@ class SchedulerRuntime:
         self,
         settings: KiraClawSettings,
         session_manager: SessionManager,
-        slack_gateway: SlackGateway,
+        channel_delivery: ChannelDelivery,
     ) -> None:
         self.settings = settings
         self.session_manager = session_manager
-        self.slack_gateway = slack_gateway
+        self.channel_delivery = channel_delivery
         self.scheduler = AsyncIOScheduler(job_defaults={"coalesce": False, "max_instances": 1, "misfire_grace_time": 30})
         self.state: str = "disabled"
         self.last_error: str | None = None
@@ -123,7 +123,8 @@ class SchedulerRuntime:
 
     async def _execute_schedule(self, schedule: dict[str, Any]) -> None:
         schedule_id = schedule.get("id", "unknown")
-        channel = schedule.get("channel", "")
+        channel_type = schedule.get("channel_type") or ""
+        channel_target = schedule.get("channel_target") or ""
         prompt = schedule.get("text", "")
         user = schedule.get("user", "")
 
@@ -132,15 +133,16 @@ class SchedulerRuntime:
             prompt=prompt,
             metadata={
                 "source": "scheduler",
-                "channel": channel,
+                "channel_type": channel_type,
+                "channel_target": channel_target,
                 "user": user,
                 "schedule_id": schedule_id,
                 "schedule_name": schedule.get("name", ""),
             },
         )
 
-        if channel and self.slack_gateway.configured:
-            await self.slack_gateway.send_message(channel, self._result_text(record))
+        if channel_target:
+            await self.channel_delivery.send_text(channel_type, channel_target, self._result_text(record))
 
     def _result_text(self, record: RunRecord) -> str:
         if record.state == "failed":

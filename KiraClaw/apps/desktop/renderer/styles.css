@@ -352,6 +352,17 @@ select {
   -webkit-app-region: no-drag;
 }
 
+.channel-config-fields {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border: 0;
+}
+
+.channel-config-fields[disabled] {
+  opacity: 0.46;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1232,20 +1243,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.channel-toggle {
-  pointer-events: none;
-}
-
-.channel-toggle .toggle-slider {
-  background-color: rgba(100, 130, 255, 0.8);
-  border-color: rgba(141, 176, 255, 0.35);
-}
-
-.channel-toggle .toggle-slider::before {
-  transform: translateX(17px);
-  background-color: #ffffff;
-}
-
 .settings-section {
   display: flex;
   flex-direction: column;
@@ -1408,6 +1405,22 @@ button:disabled {
   line-height: 1.78;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.terminal-path-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.terminal-path-link:hover {
+  color: #b9cbff;
 }
 
 .thinking-dots::after {

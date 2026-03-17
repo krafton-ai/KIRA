@@ -41,7 +41,8 @@ function draftWatch() {
     interval_minutes: 30,
     condition: "",
     action: "",
-    channel_id: "",
+    channel_type: "",
+    channel_target: "",
     is_enabled: true,
   };
 }
@@ -76,11 +77,19 @@ function watchItemMarkup(state, watch) {
           </label>
           <label class="field full">
             <span>Action</span>
-            <textarea data-watch-input="action" rows="3" placeholder="Send a concise Slack update, save the fact to memory, and summarize what changed.">${escapeHtml(watch.action || "")}</textarea>
+            <textarea data-watch-input="action" rows="3" placeholder="Send a concise update, save the fact to memory, and summarize what changed.">${escapeHtml(watch.action || "")}</textarea>
           </label>
           <label class="field">
-            <span>Default Slack Channel</span>
-            <input data-watch-input="channel_id" value="${escapeHtml(watch.channel_id || "")}" placeholder="D123456 or C123456" />
+            <span>Delivery Channel</span>
+            <select data-watch-input="channel_type">
+              <option value=""${!watch.channel_type ? " selected" : ""}>None</option>
+              <option value="slack"${watch.channel_type === "slack" ? " selected" : ""}>Slack</option>
+              <option value="telegram"${watch.channel_type === "telegram" ? " selected" : ""}>Telegram</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Delivery Target</span>
+            <input data-watch-input="channel_target" value="${escapeHtml(watch.channel_target || "")}" placeholder="Slack channel ID or Telegram chat ID" />
           </label>
           <div class="field">
             <span>Enabled</span>
@@ -164,7 +173,8 @@ export function collectWatchPayload(watchId) {
     interval_minutes: Number(get("interval_minutes")?.value || "0"),
     condition: get("condition")?.value.trim() || "",
     action: get("action")?.value.trim() || "",
-    channel_id: get("channel_id")?.value.trim() || undefined,
+    channel_type: get("channel_type")?.value.trim() || undefined,
+    channel_target: get("channel_target")?.value.trim() || undefined,
     is_enabled: Boolean(get("is_enabled")?.checked),
   };
 }
@@ -181,6 +191,9 @@ export function validateWatchPayload(payload) {
   }
   if (!payload.action.trim()) {
     return "Watch action is required.";
+  }
+  if (payload.channel_type && !payload.channel_target) {
+    return "Delivery target is required when a delivery channel is set.";
   }
   return null;
 }

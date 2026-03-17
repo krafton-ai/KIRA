@@ -33,6 +33,8 @@ def test_scheduler_tools_crud_roundtrip(tmp_path, monkeypatch) -> None:
         listed = _payload(list_schedules({}))
         assert listed["success"] is True
         assert listed["schedules"][0]["id"] == schedule_id
+        assert listed["schedules"][0]["channel_type"] == "slack"
+        assert listed["schedules"][0]["channel_target"] == "C123"
 
         updated = _payload(await update_schedule({"schedule_id": schedule_id, "name": "Updated report"}))
         assert updated["success"] is True
@@ -42,5 +44,32 @@ def test_scheduler_tools_crud_roundtrip(tmp_path, monkeypatch) -> None:
 
         after_remove = _payload(list_schedules({}))
         assert after_remove["schedules"] == []
+
+    asyncio.run(scenario())
+
+
+def test_scheduler_tools_accept_telegram_channel_type(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIRACLAW_SCHEDULE_FILE", str(tmp_path / "schedules.json"))
+
+    async def scenario() -> None:
+        created = _payload(
+            await add_schedule(
+                {
+                    "name": "Telegram report",
+                    "schedule_type": "date",
+                    "schedule_value": (datetime.now(timezone.utc) + timedelta(minutes=5)).replace(microsecond=0).isoformat(),
+                    "user_id": "U123",
+                    "text": "Send the Telegram report",
+                    "channel_type": "telegram",
+                    "channel_target": "123456",
+                }
+            )
+        )
+        assert created["success"] is True
+
+        listed = _payload(list_schedules({"channel_target": "123456"}))
+        assert listed["success"] is True
+        assert listed["schedules"][0]["channel_type"] == "telegram"
+        assert listed["schedules"][0]["channel_target"] == "123456"
 
     asyncio.run(scenario())

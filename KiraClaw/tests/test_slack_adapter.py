@@ -1,8 +1,10 @@
 import asyncio
+import logging
 
 from kiraclaw_agentd.engine import RunResult
 from kiraclaw_agentd.slack_adapter import (
     SlackGateway,
+    _build_delivery_context_prefix,
     _clean_prompt_text,
     _is_authorized_user_name,
     _parse_allowed_names,
@@ -51,6 +53,12 @@ def test_authorized_user_name_uses_case_insensitive_substring_match() -> None:
     assert _is_authorized_user_name("전지호", "Jiho, 전지호") is True
     assert _is_authorized_user_name("Someone Else", "Jiho, 전지호") is False
     assert _is_authorized_user_name("Anyone", "") is True
+
+
+def test_build_delivery_context_prefix_includes_channel_and_thread_when_present() -> None:
+    context = _build_delivery_context_prefix("C123", "111.222")
+    assert "channel_id: C123" in context
+    assert "thread_ts: 111.222" in context
 
 
 class _FakeSlackClient:
@@ -148,7 +156,7 @@ def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_pat
         gateway.identity = {"user_id": "UBOT"}
         client = _FakeSlackClient()
 
-        async def fake_bootstrap_context(*, client, event):
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
             return "Slack bootstrap"
 
         gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
@@ -165,7 +173,8 @@ def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_pat
             mention=False,
             client=client,
         )
-        assert session_manager.calls[0]["context_prefix"] == "Slack bootstrap"
+        assert "channel_id: D1" in session_manager.calls[0]["context_prefix"]
+        assert "Slack bootstrap" in session_manager.calls[0]["context_prefix"]
 
         session_manager.records = [
             RunRecord(
@@ -189,7 +198,8 @@ def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_pat
             mention=False,
             client=client,
         )
-        assert session_manager.calls[1]["context_prefix"] is None
+        assert "channel_id: D1" in session_manager.calls[1]["context_prefix"]
+        assert "Slack bootstrap" not in session_manager.calls[1]["context_prefix"]
 
     asyncio.run(scenario())
 
@@ -215,5 +225,37 @@ def test_build_slack_bootstrap_context_for_thread_excludes_current_message(tmp_p
         assert "Jiho Jeon: thread start" in context
         assert "KIRA: thread answer" in context
         assert "current question" not in context
+
+    asyncio.run(scenario())
+
+
+def test_slack_messages_from_same_user_are_debounced_and_merged(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = SlackGateway(session_manager, settings, debounce_seconds=0.05)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return None
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event1 = {"channel": "D1", "channel_type": "im", "ts": "101.0", "user": "U1", "text": "first"}
+        event2 = {"channel": "D1", "channel_type": "im", "ts": "102.0", "user": "U1", "text": "second"}
+
+        await gateway._schedule_event(event1, client, logging.getLogger("test-slack"), mention=False)
+        await gateway._schedule_event(event2, client, logging.getLogger("test-slack"), mention=False)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        assert session_manager.calls[0]["prompt"] == "first\nsecond"
+        assert client.sent_messages == [{"channel": "D1", "text": "ok", "thread_ts": None}]
 
     asyncio.run(scenario())
