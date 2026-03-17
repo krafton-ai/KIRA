@@ -122,6 +122,7 @@ class KiraClawEngine:
         provider: str | None = None,
         model: str | None = None,
         conversation_context: str | None = None,
+        memory_context: str | None = None,
     ) -> RunResult:
         selected_provider = provider or self.settings.provider
         selected_model = model or self.settings.model
@@ -148,7 +149,7 @@ class KiraClawEngine:
             ),
             event_handler=handler,
         )
-        agent.run(_compose_prompt(prompt, conversation_context))
+        agent.run(_compose_prompt(prompt, conversation_context, memory_context))
 
         if agent.last_error is not None:
             raise RuntimeError(str(agent.last_error))
@@ -168,18 +169,27 @@ class KiraClawEngine:
         )
 
 
-def _compose_prompt(prompt: str, conversation_context: str | None) -> str:
-    if not conversation_context:
+def _compose_prompt(
+    prompt: str,
+    conversation_context: str | None,
+    memory_context: str | None = None,
+) -> str:
+    if not conversation_context and not memory_context:
         return prompt
 
-    return (
-        "You are continuing the same conversation session.\n"
-        "Use the recent conversation transcript below as authoritative context for follow-up questions.\n"
-        "If the answer is present in the transcript, answer from it instead of saying you do not remember.\n\n"
-        "<recent_conversation>\n"
-        f"{conversation_context}\n"
-        "</recent_conversation>\n\n"
-        "<current_user_request>\n"
-        f"{prompt}\n"
-        "</current_user_request>"
-    )
+    parts = []
+    if memory_context:
+        parts.append(
+            "You also have relevant long-term memory from local files. "
+            "Use it only when it helps answer the current request."
+        )
+        parts.append(f"<retrieved_memory>\n{memory_context}\n</retrieved_memory>")
+    if conversation_context:
+        parts.append(
+            "You are continuing the same conversation session.\n"
+            "Use the recent conversation transcript below as authoritative context for follow-up questions.\n"
+            "If the answer is present in the transcript, answer from it instead of saying you do not remember."
+        )
+        parts.append(f"<recent_conversation>\n{conversation_context}\n</recent_conversation>")
+    parts.append(f"<current_user_request>\n{prompt}\n</current_user_request>")
+    return "\n\n".join(parts)

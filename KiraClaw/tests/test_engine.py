@@ -36,8 +36,11 @@ def test_compose_prompt_includes_recent_history_when_present() -> None:
     prompt = _compose_prompt(
         "what about yesterday?",
         "Recent conversation history:\nUser: hello\nAssistant: hi",
+        "Relevant long-term memory:\nUser prefers concise answers.",
     )
 
+    assert "<retrieved_memory>" in prompt
+    assert "User prefers concise answers." in prompt
     assert "<recent_conversation>" in prompt
     assert "User: hello" in prompt
     assert "<current_user_request>\nwhat about yesterday?\n</current_user_request>" in prompt

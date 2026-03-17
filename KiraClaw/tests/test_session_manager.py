@@ -17,6 +17,7 @@ class FakeEngine:
         provider: str | None = None,
         model: str | None = None,
         conversation_context: str | None = None,
+        memory_context: str | None = None,
     ) -> RunResult:
         return RunResult(final_response=prompt, streamed_text=prompt)
 
@@ -32,11 +33,13 @@ class CapturingEngine:
         provider: str | None = None,
         model: str | None = None,
         conversation_context: str | None = None,
+        memory_context: str | None = None,
     ) -> RunResult:
         self.calls.append(
             {
                 "prompt": prompt,
                 "conversation_context": conversation_context,
+                "memory_context": memory_context,
             }
         )
         return RunResult(
@@ -117,5 +120,45 @@ def test_session_manager_passes_recent_conversation_context(tmp_path) -> None:
         assert engine.calls[1]["conversation_context"] is not None
         assert "User: hello" in engine.calls[1]["conversation_context"]
         assert "Assistant: answer:hello" in engine.calls[1]["conversation_context"]
+        assert engine.calls[1]["memory_context"] is None
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_uses_memory_context_provider_and_completion_hook(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        engine = CapturingEngine(settings)
+        completed_requests = []
+
+        def memory_context_provider(prompt: str, session_id: str, metadata: dict) -> str | None:
+            assert prompt == "need project context"
+            assert session_id == "desktop:local"
+            assert metadata["source"] == "api"
+            return "Relevant project memory"
+
+        async def on_record_complete(request) -> None:
+            completed_requests.append(request)
+
+        manager = SessionManager(
+            engine,
+            memory_context_provider=memory_context_provider,
+            on_record_complete=on_record_complete,
+        )
+
+        await manager.run(
+            "desktop:local",
+            "need project context",
+            metadata={"source": "api"},
+        )
+
+        assert engine.calls[0]["memory_context"] == "Relevant project memory"
+        assert len(completed_requests) == 1
+        assert completed_requests[0].prompt == "need project context"
 
     asyncio.run(scenario())

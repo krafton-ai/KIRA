@@ -104,6 +104,8 @@ def test_auto_mode_prefers_legacy_kira_home(tmp_path, monkeypatch) -> None:
     assert settings.active_config_file == home / ".kira" / "config.env"
     assert settings.credential_file == home / ".kira" / "credential.json"
     assert settings.schedule_file == workspace / "schedule_data" / "schedules.json"
+    assert settings.memory_dir == workspace / "memories"
+    assert settings.memory_index_file == workspace / "memories" / "index.json"
     assert os.environ["OPENAI_API_KEY"] == "legacy-openai-key"
 
 
@@ -144,3 +146,5 @@ def test_explicit_modern_home_keeps_openai_provider(tmp_path, monkeypatch) -> No
     assert settings.browser_output_dir == home / ".kiraclaw" / "workspaces" / "default" / "files"
     assert settings.legacy_config_loaded is False
     assert settings.schedule_file == home / ".kiraclaw" / "workspaces" / "default" / "schedule_data" / "schedules.json"
+    assert settings.memory_dir == home / ".kiraclaw" / "workspaces" / "default" / "memories"
+    assert settings.memory_index_file == home / ".kiraclaw" / "workspaces" / "default" / "memories" / "index.json"

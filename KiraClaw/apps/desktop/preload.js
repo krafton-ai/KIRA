@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   openChromeProfileSetup() {
     return ipcRenderer.invoke("open-chrome-profile-setup");
   },
+  openFilesystemBaseDir(targetPath) {
+    return ipcRenderer.invoke("open-filesystem-base-dir", targetPath);
+  },
   startDaemon() {
     return ipcRenderer.invoke("start-daemon");
   },

@@ -211,6 +211,27 @@ function bindActions() {
       setSettingsStatus(`Profile setup failed: ${error.message}`);
     }
   });
+  document.getElementById("open-filesystem-base-dir")?.addEventListener("click", async () => {
+    const input = document.getElementById("FILESYSTEM_BASE_DIR");
+    const targetPath =
+      input?.value.trim() ||
+      state.config.FILESYSTEM_BASE_DIR ||
+      state.runtime?.workspace_dir ||
+      "";
+
+    if (!targetPath) {
+      setSettingsStatus("Filesystem Base Dir is empty.");
+      return;
+    }
+
+    setSettingsStatus("Opening Filesystem Base Dir...");
+    try {
+      const result = await api.openFilesystemBaseDir(targetPath);
+      setSettingsStatus(result.message || "Filesystem Base Dir opened.");
+    } catch (error) {
+      setSettingsStatus(`Open Folder failed: ${error.message}`);
+    }
+  });
   bindChatActions({
     api,
     state,

@@ -684,6 +684,22 @@ select {
   grid-column: 1 / -1;
 }
 
+.field-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-action-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.field-action-row button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .provider-field[hidden],
 .provider-note[hidden],
 .external-mcp-fields[hidden] {

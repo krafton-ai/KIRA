@@ -4,14 +4,19 @@ import asyncio
 import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import inspect
+import logging
 import time
 from typing import Any, Callable
 from uuid import uuid4
 
 from kiraclaw_agentd.engine import KiraClawEngine, RunResult
+from kiraclaw_agentd.memory_models import MemoryWriteRequest
 
 _CONVERSATION_HISTORY_TURNS = 6
 _CONVERSATION_TEXT_CHAR_LIMIT = 1_200
+
+logger = logging.getLogger(__name__)
 
 
 def utc_now() -> str:
@@ -48,12 +53,16 @@ class SessionLane:
         engine: KiraClawEngine,
         idle_timeout_seconds: float,
         build_context: Callable[[str, str, str | None], str | None],
+        build_memory_context: Callable[[str, str, dict[str, Any] | None], str | None],
+        on_record_complete: Callable[[RunRecord], Any],
         on_idle: Callable[[str, "SessionLane"], None],
     ) -> None:
         self.session_id = session_id
         self.engine = engine
         self.idle_timeout_seconds = max(0.05, idle_timeout_seconds)
         self._build_context = build_context
+        self._build_memory_context = build_memory_context
+        self._on_record_complete = on_record_complete
         self._on_idle = on_idle
         self.queue: asyncio.Queue[tuple[RunRecord, asyncio.Future[RunRecord], RunRequest]] = asyncio.Queue()
         self.worker_task: asyncio.Task[None] | None = None
@@ -99,16 +108,25 @@ class SessionLane:
                         record.run_id,
                         request.context_prefix,
                     )
+                    memory_context = self._build_memory_context(
+                        request.prompt,
+                        self.session_id,
+                        request.metadata,
+                    )
                     result = await asyncio.to_thread(
                         self.engine.run,
                         request.prompt,
                         request.provider,
                         request.model,
                         conversation_context,
+                        memory_context,
                     )
                     record.result = result
                     record.state = "completed"
                     record.finished_at = utc_now()
+                    maybe_result = self._on_record_complete(record)
+                    if inspect.isawaitable(maybe_result):
+                        await maybe_result
                     if not future.done():
                         future.set_result(record)
                 except Exception as exc:
@@ -149,10 +167,17 @@ class SessionLane:
 
 
 class SessionManager:
-    def __init__(self, engine: KiraClawEngine) -> None:
+    def __init__(
+        self,
+        engine: KiraClawEngine,
+        memory_context_provider: Callable[[str, str, dict[str, Any]], str | None] | None = None,
+        on_record_complete: Callable[[MemoryWriteRequest], Any] | None = None,
+    ) -> None:
         self.engine = engine
         self.record_limit = max(1, engine.settings.session_record_limit)
         self.idle_timeout_seconds = max(0.05, engine.settings.session_idle_seconds)
+        self.memory_context_provider = memory_context_provider
+        self.on_record_complete = on_record_complete
         self._lanes: dict[str, SessionLane] = {}
         self._records: dict[str, list[RunRecord]] = {}
 
@@ -201,6 +226,37 @@ class SessionManager:
 
         return "\n\n".join(parts) if parts else None
 
+    def _build_memory_context(
+        self,
+        prompt: str,
+        session_id: str,
+        metadata: dict[str, Any] | None,
+    ) -> str | None:
+        if self.memory_context_provider is None:
+            return None
+        try:
+            return self.memory_context_provider(prompt, session_id, metadata or {})
+        except Exception as exc:
+            logger.warning("Memory context retrieval failed for %s: %s", session_id, exc)
+            return None
+
+    async def _notify_record_complete(self, record: RunRecord) -> None:
+        if self.on_record_complete is None or record.state != "completed" or record.result is None:
+            return
+        request = MemoryWriteRequest(
+            session_id=record.session_id,
+            prompt=record.prompt,
+            response=record.result.final_response,
+            created_at=record.finished_at or record.created_at,
+            metadata=record.metadata,
+        )
+        try:
+            maybe_result = self.on_record_complete(request)
+            if inspect.isawaitable(maybe_result):
+                await maybe_result
+        except Exception as exc:
+            logger.warning("Memory save enqueue failed for %s: %s", record.run_id, exc)
+
     def _get_lane(self, session_id: str) -> SessionLane:
         lane = self._lanes.get(session_id)
         if lane is None:
@@ -209,6 +265,8 @@ class SessionManager:
                 engine=self.engine,
                 idle_timeout_seconds=self.idle_timeout_seconds,
                 build_context=self._build_conversation_context,
+                build_memory_context=self._build_memory_context,
+                on_record_complete=self._notify_record_complete,
                 on_idle=self._release_lane,
             )
             self._lanes[session_id] = lane

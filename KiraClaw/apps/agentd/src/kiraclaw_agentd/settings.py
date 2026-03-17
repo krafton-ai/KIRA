@@ -128,6 +128,7 @@ class KiraClawSettings(BaseSettings):
     proactive_enabled: bool = True
     proactive_interval_seconds: int = 300
     proactive_history_limit: int = 200
+    memory_enabled: bool = True
 
     home_mode: str = "auto"
     compatibility_mode: bool = False
@@ -146,6 +147,8 @@ class KiraClawSettings(BaseSettings):
     proactive_state_file: Path | None = None
     schedule_dir: Path | None = None
     schedule_file: Path | None = None
+    memory_dir: Path | None = None
+    memory_index_file: Path | None = None
 
     allow_commands: list[str] = Field(default_factory=lambda: [
         "ls", "cat", "head", "tail", "find", "grep", "rg", "wc",
@@ -197,6 +200,11 @@ class KiraClawSettings(BaseSettings):
         if "schedule_file" not in explicit_fields:
             schedule_dir = self.schedule_dir or (self.workspace_dir / "schedule_data")
             object.__setattr__(self, "schedule_file", schedule_dir / "schedules.json")
+        if "memory_dir" not in explicit_fields:
+            object.__setattr__(self, "memory_dir", self.workspace_dir / "memories")
+        if "memory_index_file" not in explicit_fields:
+            memory_dir = self.memory_dir or (self.workspace_dir / "memories")
+            object.__setattr__(self, "memory_index_file", memory_dir / "index.json")
         if "browser_profile_dir" not in explicit_fields:
             object.__setattr__(self, "browser_profile_dir", self.workspace_dir / "chrome_profile")
         if "browser_output_dir" not in explicit_fields:
@@ -340,6 +348,8 @@ class KiraClawSettings(BaseSettings):
             self.checker_failed_dir.mkdir(parents=True, exist_ok=True)
         if self.proactive_state_file:
             self.proactive_state_file.parent.mkdir(parents=True, exist_ok=True)
+        if self.memory_dir:
+            self.memory_dir.mkdir(parents=True, exist_ok=True)
         if self.browser_profile_dir:
             self.browser_profile_dir.mkdir(parents=True, exist_ok=True)
         if self.browser_output_dir:

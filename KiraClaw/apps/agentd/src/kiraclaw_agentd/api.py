@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from kiraclaw_agentd.proactive_models import CheckerEvent
 from kiraclaw_agentd.proactive_service import ProactiveService
 from kiraclaw_agentd.engine import KiraClawEngine, RunResult
+from kiraclaw_agentd.memory_runtime import MemoryRuntime
 from kiraclaw_agentd.scheduler_runtime import SchedulerRuntime
 from kiraclaw_agentd.session_manager import SessionManager
 from kiraclaw_agentd.settings import get_settings
@@ -49,13 +50,19 @@ class CheckerEventRequest(BaseModel):
 def create_app() -> FastAPI:
     settings = get_settings()
     engine = KiraClawEngine(settings)
-    session_manager = SessionManager(engine)
+    memory_runtime = MemoryRuntime(settings)
+    session_manager = SessionManager(
+        engine,
+        memory_context_provider=memory_runtime.build_context,
+        on_record_complete=memory_runtime.enqueue_save,
+    )
     slack_gateway = SlackGateway(session_manager, settings)
     proactive_service = ProactiveService(settings)
     scheduler_runtime = SchedulerRuntime(settings, session_manager, slack_gateway)
 
     app = FastAPI(title="KiraClaw Agentd", version="0.1.0")
     app.state.session_manager = session_manager
+    app.state.memory_runtime = memory_runtime
     app.state.slack_gateway = slack_gateway
     app.state.proactive_service = proactive_service
     app.state.scheduler_runtime = scheduler_runtime
@@ -63,6 +70,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup() -> None:
         await engine.start()
+        await memory_runtime.start()
         await slack_gateway.start()
         await proactive_service.start()
         await scheduler_runtime.start()
@@ -72,6 +80,7 @@ def create_app() -> FastAPI:
         await scheduler_runtime.stop()
         await proactive_service.stop()
         await slack_gateway.stop()
+        await memory_runtime.stop()
         await session_manager.stop()
         await engine.stop()
 
@@ -106,6 +115,7 @@ def create_app() -> FastAPI:
             "session_idle_seconds": settings.session_idle_seconds,
             "proactive_enabled": settings.proactive_enabled,
             "proactive_interval_seconds": settings.proactive_interval_seconds,
+            "memory_enabled": settings.memory_enabled,
             "home_mode": settings.home_mode,
             "active_home_mode": settings.active_home_mode,
             "compatibility_mode": settings.compatibility_mode,
@@ -120,6 +130,12 @@ def create_app() -> FastAPI:
             "mcp_deferred_servers": engine.mcp_runtime.deferred_server_names,
             "mcp_failed_servers": engine.mcp_runtime.failed_server_names,
             "mcp_loaded_tools": engine.mcp_runtime.tool_names,
+            "memory_state": memory_runtime.state,
+            "memory_last_error": memory_runtime.last_error,
+            "memory_dir": str(settings.memory_dir) if settings.memory_dir else None,
+            "memory_index_file": str(settings.memory_index_file) if settings.memory_index_file else None,
+            "memory_file_count": memory_runtime.file_count,
+            "memory_queue_size": memory_runtime.queued_count,
             "scheduler_state": scheduler_runtime.state,
             "scheduler_last_error": scheduler_runtime.last_error,
             "scheduler_job_count": scheduler_runtime.job_count,
