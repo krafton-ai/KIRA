@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from kiraclaw_agentd.engine import KiraClawEngine, create_model
+from kiraclaw_agentd.engine import KiraClawEngine, _compose_prompt, create_model
 from kiraclaw_agentd.settings import KiraClawSettings
 
 
@@ -30,3 +30,14 @@ def test_openai_default_model_is_gpt_5_3_codex(monkeypatch) -> None:
     model = create_model("openai", None, max_tokens=2048)
 
     assert model.model == "gpt-5.3-codex"
+
+
+def test_compose_prompt_includes_recent_history_when_present() -> None:
+    prompt = _compose_prompt(
+        "what about yesterday?",
+        "Recent conversation history:\nUser: hello\nAssistant: hi",
+    )
+
+    assert "<recent_conversation>" in prompt
+    assert "User: hello" in prompt
+    assert "<current_user_request>\nwhat about yesterday?\n</current_user_request>" in prompt

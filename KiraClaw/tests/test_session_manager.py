@@ -11,8 +11,38 @@ class FakeEngine:
     def __init__(self, settings: KiraClawSettings) -> None:
         self.settings = settings
 
-    def run(self, prompt: str, provider: str | None = None, model: str | None = None) -> RunResult:
+    def run(
+        self,
+        prompt: str,
+        provider: str | None = None,
+        model: str | None = None,
+        conversation_context: str | None = None,
+    ) -> RunResult:
         return RunResult(final_response=prompt, streamed_text=prompt)
+
+
+class CapturingEngine:
+    def __init__(self, settings: KiraClawSettings) -> None:
+        self.settings = settings
+        self.calls: list[dict[str, str | None]] = []
+
+    def run(
+        self,
+        prompt: str,
+        provider: str | None = None,
+        model: str | None = None,
+        conversation_context: str | None = None,
+    ) -> RunResult:
+        self.calls.append(
+            {
+                "prompt": prompt,
+                "conversation_context": conversation_context,
+            }
+        )
+        return RunResult(
+            final_response=f"answer:{prompt}",
+            streamed_text=f"answer:{prompt}",
+        )
 
 
 def test_session_manager_caps_record_history_per_session(tmp_path) -> None:
@@ -65,5 +95,27 @@ def test_session_manager_releases_idle_lane_but_keeps_records(tmp_path) -> None:
         assert [record.prompt for record in manager.get_session_records("slack:thread:123")] == ["hello"]
 
         await manager.stop()
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_passes_recent_conversation_context(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        engine = CapturingEngine(settings)
+        manager = SessionManager(engine)
+
+        await manager.run("desktop:local", "hello")
+        await manager.run("desktop:local", "what about yesterday?")
+
+        assert engine.calls[0]["conversation_context"] is None
+        assert engine.calls[1]["conversation_context"] is not None
+        assert "User: hello" in engine.calls[1]["conversation_context"]
+        assert "Assistant: answer:hello" in engine.calls[1]["conversation_context"]
 
     asyncio.run(scenario())

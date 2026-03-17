@@ -121,6 +121,7 @@ class KiraClawEngine:
         prompt: str,
         provider: str | None = None,
         model: str | None = None,
+        conversation_context: str | None = None,
     ) -> RunResult:
         selected_provider = provider or self.settings.provider
         selected_model = model or self.settings.model
@@ -147,7 +148,7 @@ class KiraClawEngine:
             ),
             event_handler=handler,
         )
-        agent.run(prompt)
+        agent.run(_compose_prompt(prompt, conversation_context))
 
         if agent.last_error is not None:
             raise RuntimeError(str(agent.last_error))
@@ -165,3 +166,20 @@ class KiraClawEngine:
             streamed_text="".join(handler.stream_chunks),
             tool_events=handler.tool_events,
         )
+
+
+def _compose_prompt(prompt: str, conversation_context: str | None) -> str:
+    if not conversation_context:
+        return prompt
+
+    return (
+        "You are continuing the same conversation session.\n"
+        "Use the recent conversation transcript below as authoritative context for follow-up questions.\n"
+        "If the answer is present in the transcript, answer from it instead of saying you do not remember.\n\n"
+        "<recent_conversation>\n"
+        f"{conversation_context}\n"
+        "</recent_conversation>\n\n"
+        "<current_user_request>\n"
+        f"{prompt}\n"
+        "</current_user_request>"
+    )

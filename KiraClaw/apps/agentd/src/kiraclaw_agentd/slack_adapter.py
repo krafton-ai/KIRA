@@ -40,6 +40,19 @@ def _clean_prompt_text(text: str, *, mention: bool) -> str:
     return _normalize_text(text)
 
 
+def _strip_bot_mention(text: str, bot_user_id: str | None) -> str:
+    if not bot_user_id:
+        return _normalize_text(text)
+    return _normalize_text(text.replace(f"<@{bot_user_id}>", " "))
+
+
+def _ts_value(value: str | None) -> float:
+    try:
+        return float(value or "0")
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _is_dm(event: dict[str, Any]) -> bool:
     return event.get("channel_type") == "im"
 
@@ -254,6 +267,7 @@ class SlackGateway:
 
         asyncio.create_task(
             self._run_for_event(
+                event=event,
                 session_id=session_id,
                 channel=channel,
                 reply_thread_ts=reply_thread_ts,
@@ -269,6 +283,7 @@ class SlackGateway:
     async def _run_for_event(
         self,
         *,
+        event: dict[str, Any],
         session_id: str,
         channel: str,
         reply_thread_ts: str | None,
@@ -285,9 +300,16 @@ class SlackGateway:
             "user_name": user_name,
             "source": "slack-app-mention" if mention else "slack-dm",
         }
+        context_prefix = None
+        if not self.session_manager.get_session_records(session_id):
+            context_prefix = await self._build_slack_bootstrap_context(
+                client=client,
+                event=event,
+            )
         record = await self.session_manager.run(
             session_id=session_id,
             prompt=prompt,
+            context_prefix=context_prefix,
             metadata=metadata,
         )
         await self._publish_result(client, channel, reply_thread_ts, record)
@@ -298,3 +320,65 @@ class SlackGateway:
         else:
             text = (record.result.final_response if record.result else "") or "Run completed without a final response."
         await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
+
+    async def _build_slack_bootstrap_context(self, client, event: dict[str, Any]) -> str | None:
+        try:
+            messages = await self._fetch_bootstrap_messages(client, event)
+        except Exception as exc:
+            logger.warning("Failed to fetch Slack history bootstrap: %s", exc)
+            return None
+
+        if not messages:
+            return None
+
+        lines = [
+            "Slack conversation history from this thread/channel before the current request:",
+        ]
+        for message in messages:
+            speaker = await self._speaker_for_message(client, message)
+            cleaned = _strip_bot_mention(message.get("text", ""), self.identity.get("user_id"))
+            if not cleaned:
+                continue
+            lines.append(f"{speaker}: {cleaned}")
+
+        return "\n".join(lines) if len(lines) > 1 else None
+
+    async def _fetch_bootstrap_messages(self, client, event: dict[str, Any]) -> list[dict[str, Any]]:
+        current_ts = event.get("ts")
+        if _is_dm(event):
+            response = await client.conversations_history(
+                channel=event["channel"],
+                limit=8,
+                latest=current_ts,
+                inclusive=False,
+            )
+            messages = response.get("messages", [])
+            messages.reverse()
+            return [message for message in messages if message.get("text")]
+
+        thread_ts = event.get("thread_ts")
+        if not thread_ts:
+            return []
+
+        response = await client.conversations_replies(
+            channel=event["channel"],
+            ts=thread_ts,
+        )
+        current_value = _ts_value(current_ts)
+        return [
+            message
+            for message in response.get("messages", [])
+            if message.get("text") and _ts_value(message.get("ts")) < current_value
+        ]
+
+    async def _speaker_for_message(self, client, message: dict[str, Any]) -> str:
+        user_id = message.get("user")
+        if user_id:
+            if user_id == self.identity.get("user_id"):
+                return self.settings.agent_name
+            return await self._get_user_name(client, user_id)
+
+        if message.get("bot_id") or message.get("subtype") == "bot_message":
+            return self.settings.agent_name
+
+        return "Slack"

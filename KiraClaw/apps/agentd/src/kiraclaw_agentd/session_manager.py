@@ -10,6 +10,9 @@ from uuid import uuid4
 
 from kiraclaw_agentd.engine import KiraClawEngine, RunResult
 
+_CONVERSATION_HISTORY_TURNS = 6
+_CONVERSATION_TEXT_CHAR_LIMIT = 1_200
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -20,6 +23,7 @@ class RunRequest:
     prompt: str
     provider: str | None = None
     model: str | None = None
+    context_prefix: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -43,11 +47,13 @@ class SessionLane:
         session_id: str,
         engine: KiraClawEngine,
         idle_timeout_seconds: float,
+        build_context: Callable[[str, str, str | None], str | None],
         on_idle: Callable[[str, "SessionLane"], None],
     ) -> None:
         self.session_id = session_id
         self.engine = engine
         self.idle_timeout_seconds = max(0.05, idle_timeout_seconds)
+        self._build_context = build_context
         self._on_idle = on_idle
         self.queue: asyncio.Queue[tuple[RunRecord, asyncio.Future[RunRecord], RunRequest]] = asyncio.Queue()
         self.worker_task: asyncio.Task[None] | None = None
@@ -88,11 +94,17 @@ class SessionLane:
                 try:
                     record.state = "running"
                     record.started_at = utc_now()
+                    conversation_context = self._build_context(
+                        self.session_id,
+                        record.run_id,
+                        request.context_prefix,
+                    )
                     result = await asyncio.to_thread(
                         self.engine.run,
                         request.prompt,
                         request.provider,
                         request.model,
+                        conversation_context,
                     )
                     record.result = result
                     record.state = "completed"
@@ -155,6 +167,40 @@ class SessionManager:
         if current_lane is lane and lane.queue.empty() and not lane.active:
             self._lanes.pop(session_id, None)
 
+    def _build_conversation_context(
+        self,
+        session_id: str,
+        current_run_id: str,
+        context_prefix: str | None = None,
+    ) -> str | None:
+        records = self._records.get(session_id, [])
+
+        recent_turns: list[RunRecord] = []
+        for record in records:
+            if record.run_id == current_run_id:
+                continue
+            if record.state != "completed" or record.result is None:
+                continue
+            if not record.prompt.strip() or not record.result.final_response.strip():
+                continue
+            recent_turns.append(record)
+
+        parts: list[str] = []
+        if context_prefix:
+            parts.append(context_prefix)
+
+        if recent_turns:
+            recent_turns = recent_turns[-_CONVERSATION_HISTORY_TURNS:]
+            lines = [
+                "Recent KiraClaw session history (oldest first). Use it as context only when it helps continue the same conversation:",
+            ]
+            for record in recent_turns:
+                lines.append(f"User: {_clip_conversation_text(record.prompt)}")
+                lines.append(f"Assistant: {_clip_conversation_text(record.result.final_response)}")
+            parts.append("\n".join(lines))
+
+        return "\n\n".join(parts) if parts else None
+
     def _get_lane(self, session_id: str) -> SessionLane:
         lane = self._lanes.get(session_id)
         if lane is None:
@@ -162,6 +208,7 @@ class SessionManager:
                 session_id=session_id,
                 engine=self.engine,
                 idle_timeout_seconds=self.idle_timeout_seconds,
+                build_context=self._build_conversation_context,
                 on_idle=self._release_lane,
             )
             self._lanes[session_id] = lane
@@ -173,6 +220,7 @@ class SessionManager:
         prompt: str,
         provider: str | None = None,
         model: str | None = None,
+        context_prefix: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> RunRecord:
         lane = self._get_lane(session_id)
@@ -190,6 +238,7 @@ class SessionManager:
                 prompt=prompt,
                 provider=provider,
                 model=model,
+                context_prefix=context_prefix,
                 metadata=metadata or {},
             ),
             record,
@@ -222,3 +271,10 @@ class SessionManager:
         for lane in lanes:
             await lane.stop()
         self._lanes.clear()
+
+
+def _clip_conversation_text(text: str) -> str:
+    stripped = " ".join(text.strip().split())
+    if len(stripped) <= _CONVERSATION_TEXT_CHAR_LIMIT:
+        return stripped
+    return stripped[: _CONVERSATION_TEXT_CHAR_LIMIT - 1].rstrip() + "…"
