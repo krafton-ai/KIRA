@@ -121,16 +121,13 @@ class KiraClawSettings(BaseSettings):
     slack_team_id: str = ""
     slack_allowed_names: str = ""
     desktop_app_enabled: bool = True
-    desktop_chat_enabled: bool = True
     single_gateway_per_host: bool = True
     session_scope: str = "session-lane"
     session_record_limit: int = 100
     session_idle_seconds: float = 900
     proactive_enabled: bool = True
     proactive_interval_seconds: int = 300
-    proactive_auto_dispatch: bool = False
     proactive_history_limit: int = 200
-    proactive_default_channel_id: str = ""
 
     home_mode: str = "auto"
     compatibility_mode: bool = False
@@ -275,7 +272,6 @@ class KiraClawSettings(BaseSettings):
                 object.__setattr__(self, "model", _map_legacy_model(legacy_values.get("MODEL_FOR_COMPLEX")))
 
         legacy_bool_field_map = {
-            "desktop_chat_enabled": "KIRACLAW_DESKTOP_CHAT_ENABLED",
             "skills_enabled": "KIRACLAW_SKILLS_ENABLED",
             "mcp_enabled": "KIRACLAW_MCP_ENABLED",
             "mcp_time_enabled": "KIRACLAW_MCP_TIME_ENABLED",
@@ -290,7 +286,6 @@ class KiraClawSettings(BaseSettings):
             "atlassian_enabled": "ATLASSIAN_ENABLED",
             "tableau_enabled": "TABLEAU_ENABLED",
             "browser_enabled": "CHROME_ENABLED",
-            "proactive_auto_dispatch": "KIRACLAW_PROACTIVE_AUTO_DISPATCH",
         }
         for field_name, legacy_key in legacy_bool_field_map.items():
             if field_name in explicit_fields:

@@ -28,8 +28,6 @@ export const SETTINGS_FIELDS = [
   "TABLEAU_PAT_NAME",
   "TABLEAU_PAT_VALUE",
   "FILESYSTEM_BASE_DIR",
-  "KIRACLAW_DESKTOP_CHAT_ENABLED",
-  "KIRACLAW_PROACTIVE_AUTO_DISPATCH",
 ];
 
 export const BOOLEAN_FIELDS = [
@@ -39,8 +37,6 @@ export const BOOLEAN_FIELDS = [
   "ATLASSIAN_ENABLED",
   "TABLEAU_ENABLED",
   "CHROME_ENABLED",
-  "KIRACLAW_DESKTOP_CHAT_ENABLED",
-  "KIRACLAW_PROACTIVE_AUTO_DISPATCH",
 ];
 
 export const SELECT_DEFAULTS = {
@@ -51,8 +47,11 @@ export const SELECT_DEFAULTS = {
   ATLASSIAN_ENABLED: "false",
   TABLEAU_ENABLED: "false",
   CHROME_ENABLED: "false",
-  KIRACLAW_DESKTOP_CHAT_ENABLED: "true",
-  KIRACLAW_PROACTIVE_AUTO_DISPATCH: "false",
+};
+
+export const PROVIDER_DEFAULT_MODELS = {
+  claude: "claude-opus-4-6",
+  openai: "gpt-5.3-codex",
 };
 
 export const DEFAULT_CHAT_SESSION_ID = "desktop:local";

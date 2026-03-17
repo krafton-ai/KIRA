@@ -51,7 +51,7 @@ def create_app() -> FastAPI:
     engine = KiraClawEngine(settings)
     session_manager = SessionManager(engine)
     slack_gateway = SlackGateway(session_manager, settings)
-    proactive_service = ProactiveService(settings, slack_gateway)
+    proactive_service = ProactiveService(settings)
     scheduler_runtime = SchedulerRuntime(settings, session_manager, slack_gateway)
 
     app = FastAPI(title="KiraClaw Agentd", version="0.1.0")
@@ -98,7 +98,6 @@ def create_app() -> FastAPI:
             "slack_enabled": settings.slack_enabled,
             "slack_allowed_names": settings.slack_allowed_names,
             "desktop_app_enabled": settings.desktop_app_enabled,
-            "desktop_chat_enabled": settings.desktop_chat_enabled,
             "browser_enabled": settings.browser_enabled,
             "browser_profile_dir": str(settings.browser_profile_dir) if settings.browser_profile_dir else None,
             "single_gateway_per_host": settings.single_gateway_per_host,
@@ -107,7 +106,6 @@ def create_app() -> FastAPI:
             "session_idle_seconds": settings.session_idle_seconds,
             "proactive_enabled": settings.proactive_enabled,
             "proactive_interval_seconds": settings.proactive_interval_seconds,
-            "proactive_auto_dispatch": settings.proactive_auto_dispatch,
             "home_mode": settings.home_mode,
             "active_home_mode": settings.active_home_mode,
             "compatibility_mode": settings.compatibility_mode,

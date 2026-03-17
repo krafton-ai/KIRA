@@ -132,12 +132,15 @@ def test_mcp_runtime_builds_external_npm_configs(tmp_path) -> None:
 
     assert [config.name for config in configs] == ["perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright"]
     assert configs[0].env == {"PERPLEXITY_API_KEY": "perplexity-key"}
+    assert configs[0].wire_format == "line"
     assert configs[1].env["GITLAB_API_URL"] == "https://gitlab.com/api/v4"
+    assert configs[1].wire_format == "line"
     assert configs[2].env == {
         "TENANT_ID": "tenant-id",
         "CLIENT_ID": "client-id",
         "USE_INTERACTIVE": "true",
     }
+    assert configs[2].wire_format == "line"
     assert configs[3].command[-2:] == ["--resource", "https://acme.atlassian.net/"]
     assert configs[4].env == {
         "SERVER": "https://tableau.example.com",

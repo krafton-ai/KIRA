@@ -12,14 +12,13 @@ logger = logging.getLogger(__name__)
 
 
 class ProactiveService:
-    def __init__(self, settings: KiraClawSettings, slack_gateway=None) -> None:
+    def __init__(self, settings: KiraClawSettings) -> None:
         if not settings.checker_inbox_dir or not settings.checker_processed_dir or not settings.checker_failed_dir:
             raise ValueError("checker directories must be configured")
         if not settings.proactive_state_file:
             raise ValueError("proactive state file must be configured")
 
         self.settings = settings
-        self.slack_gateway = slack_gateway
         self.inbox = FileInboxChecker(
             settings.checker_inbox_dir,
             settings.checker_processed_dir,
@@ -84,19 +83,6 @@ class ProactiveService:
             dedupe_key=dedupe_key,
             state="queued",
         )
-
-        channel_id = event.channel_id or self.settings.proactive_default_channel_id or None
-        if self.settings.proactive_auto_dispatch and channel_id and self.slack_gateway and self.slack_gateway.configured:
-            try:
-                await self.slack_gateway.send_message(
-                    channel=channel_id,
-                    text=event.suggestion_text,
-                    thread_ts=event.thread_ts,
-                )
-                suggestion.state = "dispatched"
-            except Exception as exc:
-                suggestion.state = "failed"
-                suggestion.dispatch_error = str(exc)
 
         self.store.record(suggestion)
         return suggestion

@@ -1,4 +1,4 @@
-import { BOOLEAN_FIELDS, EXTERNAL_MCP_CONFIG_FIELDS, EXTERNAL_MCP_SERVER_NAMES, SETTINGS_FIELDS, SELECT_DEFAULTS } from "./constants.mjs";
+import { BOOLEAN_FIELDS, EXTERNAL_MCP_CONFIG_FIELDS, EXTERNAL_MCP_SERVER_NAMES, PROVIDER_DEFAULT_MODELS, SETTINGS_FIELDS, SELECT_DEFAULTS } from "./constants.mjs";
 import { byId, setText } from "./dom.mjs";
 
 function normalizeBoolean(value) {
@@ -18,8 +18,6 @@ function runtimeValueForField(state, field) {
     SLACK_ALLOWED_NAMES: state.runtime.slack_allowed_names,
     CHROME_ENABLED: String(Boolean(state.runtime.browser_enabled)),
     FILESYSTEM_BASE_DIR: state.runtime.workspace_dir,
-    KIRACLAW_DESKTOP_CHAT_ENABLED: String(Boolean(state.runtime.desktop_chat_enabled)),
-    KIRACLAW_PROACTIVE_AUTO_DISPATCH: String(Boolean(state.runtime.proactive_auto_dispatch)),
   };
 
   return runtimeMap[field] ?? "";
@@ -42,10 +40,27 @@ function effectiveFieldValue(state, field) {
 export function syncProviderFields() {
   const providerInput = byId("KIRACLAW_PROVIDER");
   const provider = providerInput ? providerInput.value : SELECT_DEFAULTS.KIRACLAW_PROVIDER;
+  const previousProvider = providerInput?.dataset.lastProvider || "";
 
   for (const element of document.querySelectorAll("[data-provider]")) {
     const matches = element.dataset.provider === provider;
     element.hidden = !matches;
+  }
+
+  const modelInput = byId("KIRACLAW_MODEL");
+  if (modelInput) {
+    const currentValue = modelInput.value.trim();
+    const previousDefault = PROVIDER_DEFAULT_MODELS[previousProvider] || "";
+    const nextDefault = PROVIDER_DEFAULT_MODELS[provider] || "";
+
+    if (!currentValue || (previousDefault && currentValue === previousDefault)) {
+      modelInput.value = nextDefault;
+    }
+    modelInput.placeholder = nextDefault || "claude-opus-4-6 or gpt-5.3-codex";
+  }
+
+  if (providerInput) {
+    providerInput.dataset.lastProvider = provider;
   }
 }
 

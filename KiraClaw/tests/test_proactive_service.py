@@ -7,21 +7,6 @@ from kiraclaw_agentd.proactive_service import ProactiveService
 from kiraclaw_agentd.settings import KiraClawSettings
 
 
-class DummySlackGateway:
-    def __init__(self) -> None:
-        self.configured = True
-        self.messages: list[dict[str, str | None]] = []
-
-    async def send_message(self, channel: str, text: str, thread_ts: str | None = None) -> None:
-        self.messages.append(
-            {
-                "channel": channel,
-                "text": text,
-                "thread_ts": thread_ts,
-            }
-        )
-
-
 def _make_settings(tmp_path, **overrides) -> KiraClawSettings:
     settings = KiraClawSettings(
         data_dir=tmp_path / "data",
@@ -82,31 +67,3 @@ def test_proactive_service_marks_duplicate_events(tmp_path) -> None:
     suggestions = service.list_suggestions(limit=5)
     assert suggestions[0].state == "skipped_duplicate"
     assert suggestions[1].state == "queued"
-
-
-def test_proactive_service_auto_dispatches_when_enabled(tmp_path) -> None:
-    settings = _make_settings(
-        tmp_path,
-        proactive_auto_dispatch=True,
-        proactive_default_channel_id="D123456",
-    )
-    slack_gateway = DummySlackGateway()
-    service = ProactiveService(settings, slack_gateway)
-    event = CheckerEvent(
-        source="confluence",
-        title="Page changed",
-        summary="Roadmap page was updated.",
-        suggestion_text="I saw the roadmap page changed. I can summarize what moved.",
-    )
-
-    service.enqueue_event(event)
-    processed = asyncio.run(service.process_now())
-
-    assert processed[0].state == "dispatched"
-    assert slack_gateway.messages == [
-        {
-            "channel": "D123456",
-            "text": "I saw the roadmap page changed. I can summarize what moved.",
-            "thread_ts": None,
-        }
-    ]

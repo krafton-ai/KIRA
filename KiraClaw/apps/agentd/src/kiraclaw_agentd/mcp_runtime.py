@@ -53,6 +53,7 @@ def _external_mcp_configs(settings: KiraClawSettings) -> list[McpServerConfig]:
                 name="perplexity",
                 command=PERPLEXITY_MCP_COMMAND,
                 env={"PERPLEXITY_API_KEY": settings.perplexity_api_key},
+                wire_format="line",
             )
         )
 
@@ -69,6 +70,7 @@ def _external_mcp_configs(settings: KiraClawSettings) -> list[McpServerConfig]:
                     "USE_MILESTONE": "false",
                     "USE_PIPELINE": "false",
                 },
+                wire_format="line",
             )
         )
 
@@ -82,6 +84,7 @@ def _external_mcp_configs(settings: KiraClawSettings) -> list[McpServerConfig]:
                     "CLIENT_ID": settings.ms365_client_id,
                     "USE_INTERACTIVE": "true",
                 },
+                wire_format="line",
             )
         )
 

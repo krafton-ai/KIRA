@@ -363,12 +363,11 @@
                   <select id="KIRACLAW_PROVIDER" class="form-select">
                     <option value="claude">Claude</option>
                     <option value="openai">OpenAI</option>
-                    <option value="vertex_ai">Vertex AI</option>
                   </select>
                 </label>
                 <label class="field">
                   <span>Model Override</span>
-                  <input id="KIRACLAW_MODEL" placeholder="claude-opus-4-6 or gpt-5.2" />
+                  <input id="KIRACLAW_MODEL" placeholder="claude-opus-4-6 or gpt-5.3-codex" />
                 </label>
                 <label class="field full provider-field" data-provider="claude">
                   <span>Anthropic API Key</span>
@@ -378,38 +377,17 @@
                   <span>OpenAI API Key</span>
                   <input id="OPENAI_API_KEY" type="password" placeholder="sk-..." data-secret="true" />
                 </label>
-                <div class="provider-note full" data-provider="vertex_ai">
-                  Vertex AI uses your local Google credentials. Keep using `~/.kira/credential.json` or set `GOOGLE_APPLICATION_CREDENTIALS`.
-                </div>
               </div>
             </section>
 
             <section class="settings-section">
               <h3>Workspace</h3>
-              <p class="section-copy">Keep the bridge mode simple: reuse `.kira`, choose the workspace, and decide whether desktop chat is available.</p>
+              <p class="section-copy">Keep the bridge mode simple: reuse `.kira` and choose the workspace this agent should use.</p>
               <div class="form-grid">
                 <label class="field full">
                   <span>Filesystem Base Dir</span>
                   <input id="FILESYSTEM_BASE_DIR" placeholder="/Users/you/Documents/KIRA" />
                 </label>
-                <div class="toggle-field">
-                  <div class="toggle-copy">
-                    <span class="toggle-title">Desktop Chat Enabled</span>
-                  </div>
-                  <label class="toggle-switch">
-                    <input type="checkbox" id="KIRACLAW_DESKTOP_CHAT_ENABLED" />
-                    <span class="toggle-slider"></span>
-                  </label>
-                </div>
-                <div class="toggle-field">
-                  <div class="toggle-copy">
-                    <span class="toggle-title">Proactive Auto Dispatch</span>
-                  </div>
-                  <label class="toggle-switch">
-                    <input type="checkbox" id="KIRACLAW_PROACTIVE_AUTO_DISPATCH" />
-                    <span class="toggle-slider"></span>
-                  </label>
-                </div>
               </div>
             </section>
           </div>
