@@ -141,10 +141,10 @@ class Settings(BaseSettings):
         if credential_path:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credential_path
             os.environ["ANTHROPIC_VERTEX_PROJECT_ID"] = os.environ.get(
-                "ANTHROPIC_VERTEX_PROJECT_ID", "your-project-id"
+                "ANTHROPIC_VERTEX_PROJECT_ID", "dl-service-dev"
             )
             os.environ["ANTHROPIC_VERTEX_REGION"] = os.environ.get(
-                "ANTHROPIC_VERTEX_REGION", "your-region"
+                "ANTHROPIC_VERTEX_REGION", "us-east5"
             )
             os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
             # Pydantic v2 BaseSettings is frozen, so use object.__setattr__

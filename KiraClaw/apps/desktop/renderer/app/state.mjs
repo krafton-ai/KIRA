@@ -1,0 +1,20 @@
+export const state = {
+  activeView: "overview",
+  appMeta: null,
+  config: {},
+  daemonStatus: null,
+  engineAction: {
+    action: null,
+    busy: false,
+    message: "",
+    tone: "neutral",
+    visible: false,
+  },
+  runtime: null,
+  watches: [],
+  watchDraft: false,
+  watchDirty: false,
+  watchRuns: [],
+  selectedWatchId: null,
+  settingsDirty: false,
+};

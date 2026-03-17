@@ -1,0 +1,13 @@
+{
+  "name": "@kiraclaw/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "KiraClaw desktop shell",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^39.0.0"
+  }
+}

@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KiraClaw Desktop</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1 class="app-name">KiraClaw</h1>
+        </div>
+
+        <nav class="nav">
+          <button class="nav-item active" data-view="overview">Home</button>
+          <button class="nav-item" data-view="chat">Talk</button>
+          <button class="nav-item" data-view="channel">Channel</button>
+          <button class="nav-item" data-view="mcp">MCP</button>
+          <button class="nav-item" data-view="watch">Watch</button>
+          <button class="nav-item" data-view="settings">Settings</button>
+        </nav>
+
+        <div class="sidebar-foot">
+          <div id="daemon-badge" class="status-chip offline">KIRA Engine offline</div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section id="view-overview" class="view active">
+          <section id="landing-panel" class="landing-panel offline">
+            <div class="landing-center">
+              <div id="landing-avatar-shell" class="landing-avatar-shell offline" aria-hidden="true">
+                <span class="avatar-halo"></span>
+                <img class="avatar-claw-mark avatar-claw-mark-left" src="../assets/claw.png" alt="" />
+                <img class="avatar-claw-mark avatar-claw-mark-right" src="../assets/claw.png" alt="" />
+                <div id="agent-bubble" class="agent-bubble">My name is KIRA</div>
+                <img class="landing-avatar" src="../assets/kira-icon.png" alt="KIRA icon" />
+              </div>
+              <h3 id="hero-title">KiraClaw</h3>
+              <div id="hero-version" class="hero-version">v0.0.0</div>
+              <div id="engine-action-banner" class="engine-action-banner neutral" hidden>
+                <span id="engine-action-dot" class="engine-action-dot"></span>
+                <span id="engine-action-message"></span>
+              </div>
+              <div class="button-row landing-actions">
+                <button id="start-daemon" class="primary">Start Engine</button>
+                <button id="restart-daemon" class="ghost">Restart</button>
+                <button id="stop-daemon" class="ghost">Stop</button>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section id="view-chat" class="view">
+          <header class="view-head terminal-view-head">
+            <div>
+              <h2>Talk</h2>
+              <p class="inline-copy">Talk directly with the same KIRA Engine used by Slack.</p>
+            </div>
+          </header>
+
+          <section class="terminal-shell">
+            <div class="terminal-toolbar">
+              <label class="terminal-session">
+                <span>Session</span>
+                <input id="chat-session-id" value="desktop:local" />
+              </label>
+              <button id="clear-chat" class="ghost">Clear</button>
+            </div>
+
+            <section id="chat-thread" class="chat-thread terminal-thread">
+              <article class="terminal-entry assistant">
+                <div class="terminal-line">
+                  <span class="terminal-prefix">KiraClaw</span>
+                  <div class="terminal-text">Direct chat is ready.</div>
+                </div>
+              </article>
+            </section>
+
+            <footer class="terminal-compose">
+              <div class="terminal-input-row">
+                <span class="terminal-prompt-label">&gt;</span>
+                <textarea id="chat-input" rows="4" placeholder="Ask KIRA to work on something."></textarea>
+              </div>
+              <div class="terminal-compose-foot">
+                <button id="send-chat" class="primary">Send</button>
+              </div>
+            </footer>
+          </section>
+        </section>
+
+        <section id="view-watch" class="view">
+          <header class="view-head">
+            <div>
+              <h2>Watch</h2>
+              <p class="inline-copy">Run the same KIRA Engine on a schedule with a condition and an action.</p>
+            </div>
+          </header>
+
+          <section class="settings-section">
+            <div class="card-head">
+              <h3>Watches</h3>
+              <div class="status-chip online">Scheduled</div>
+            </div>
+            <div id="watch-list" class="watch-list"></div>
+            <div class="watch-add-row">
+              <button id="add-watch-inline" class="ghost">+ Add Watch</button>
+            </div>
+          </section>
+
+          <footer class="view-foot">
+            <div id="watch-status" class="status-text">Watch runtime is ready.</div>
+            <div class="button-row">
+              <button id="reload-watches" class="ghost">Reload</button>
+            </div>
+          </footer>
+        </section>
+
+        <section id="view-channel" class="view">
+          <header class="view-head">
+            <div>
+              <h2>Channel</h2>
+              <p class="inline-copy">Multiple channels can live here. Right now, Slack is the first and only one.</p>
+            </div>
+          </header>
+
+          <div class="settings-panel">
+            <section class="settings-section">
+              <div class="card-head">
+                <h3>Available now</h3>
+                <div class="status-chip online">1 Active</div>
+              </div>
+              <div class="channel-list">
+                <article class="channel-card active">
+                  <div class="channel-card-head">
+                    <strong>Slack</strong>
+                    <label class="toggle-switch channel-toggle" aria-label="Slack enabled">
+                      <input type="checkbox" checked disabled />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                  <p class="section-copy">Desktop chat and Slack already share the same KIRA Engine.</p>
+                </article>
+                <article class="channel-card">
+                  <div class="channel-card-head">
+                    <strong>More channels</strong>
+                    <span class="subtle-pill">Later</span>
+                  </div>
+                  <p class="section-copy">Additional channels will be added here after the core Slack flow is solid.</p>
+                </article>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Slack</h3>
+              <p class="section-copy">These values let Slack talk to the same local engine that desktop chat uses.</p>
+              <div class="form-grid">
+                <label class="field full">
+                  <span>Slack Bot Token</span>
+                  <input id="SLACK_BOT_TOKEN" type="password" placeholder="xoxb-..." data-secret="true" />
+                </label>
+                <label class="field full">
+                  <span>Slack App Token</span>
+                  <input id="SLACK_APP_TOKEN" type="password" placeholder="xapp-..." data-secret="true" />
+                </label>
+                <label class="field">
+                  <span>Slack Signing Secret</span>
+                  <input id="SLACK_SIGNING_SECRET" type="password" data-secret="true" />
+                </label>
+                <label class="field">
+                  <span>Slack Team ID</span>
+                  <input id="SLACK_TEAM_ID" placeholder="T..." />
+                </label>
+                <label class="field full">
+                  <span>Allowed Names</span>
+                  <input id="SLACK_ALLOWED_NAMES" placeholder="Jiho, 전지호" />
+                </label>
+              </div>
+            </section>
+          </div>
+
+          <footer class="view-foot">
+            <div id="channel-status" class="status-text">Slack settings are read from `~/.kira/config.env`.</div>
+            <div class="button-row">
+              <button id="reload-channel-config" class="ghost">Reload</button>
+              <button id="save-channel-settings" class="primary">Save Channel</button>
+              <button id="apply-channel-settings" class="ghost">Save And Restart Engine</button>
+            </div>
+          </footer>
+        </section>
+
+        <section id="view-mcp" class="view">
+          <header class="view-head">
+            <div>
+              <h2>MCP</h2>
+              <p class="inline-copy">Only external npm MCP integrations live here.</p>
+            </div>
+          </header>
+
+          <div class="settings-panel">
+            <section class="settings-section">
+              <h3>Browser</h3>
+              <p class="section-copy">Chrome profile setup happens before the engine starts. The profile lives inside your configured workspace folder as <code>chrome_profile</code>.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="CHROME_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="CHROME_ENABLED" hidden>
+                <div class="field full browser-setup-actions">
+                  <button id="open-browser-profile-setup" class="ghost" type="button">Open Profile Setup</button>
+                  <p class="section-copy">Use this before browser MCP tasks to sign in with the same Chrome profile.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Perplexity</h3>
+              <p class="section-copy">Use the npm MCP package with your Perplexity API key.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="PERPLEXITY_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="PERPLEXITY_ENABLED" hidden>
+                <label class="field full">
+                  <span>Perplexity API Key</span>
+                  <input id="PERPLEXITY_API_KEY" type="password" data-secret="true" placeholder="pplx-..." />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>GitLab</h3>
+              <p class="section-copy">Use the npm GitLab MCP package. `https://gitlab.com` is enough for GitLab.com.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="GITLAB_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="GITLAB_ENABLED" hidden>
+                <label class="field">
+                  <span>GitLab URL</span>
+                  <input id="GITLAB_API_URL" placeholder="https://gitlab.com" />
+                </label>
+                <label class="field">
+                  <span>Access Token</span>
+                  <input id="GITLAB_PERSONAL_ACCESS_TOKEN" type="password" data-secret="true" />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Microsoft 365</h3>
+              <p class="section-copy">Lokka MCP uses interactive OAuth on first run and covers Outlook, OneDrive, and SharePoint.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="MS365_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="MS365_ENABLED" hidden>
+                <label class="field">
+                  <span>Client ID</span>
+                  <input id="MS365_CLIENT_ID" placeholder="Azure App Client ID" />
+                </label>
+                <label class="field">
+                  <span>Tenant ID</span>
+                  <input id="MS365_TENANT_ID" placeholder="Azure Tenant ID" />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Atlassian</h3>
+              <p class="section-copy">Remote Atlassian MCP uses browser OAuth on first run. Use one of the site URLs to scope the tenant.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="ATLASSIAN_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="ATLASSIAN_ENABLED" hidden>
+                <label class="field">
+                  <span>Confluence Site URL</span>
+                  <input id="ATLASSIAN_CONFLUENCE_SITE_URL" placeholder="https://your-domain.atlassian.net" />
+                </label>
+                <label class="field">
+                  <span>Jira Site URL</span>
+                  <input id="ATLASSIAN_JIRA_SITE_URL" placeholder="https://your-domain.atlassian.net" />
+                </label>
+                <label class="field full">
+                  <span>Default Confluence Page ID</span>
+                  <input id="ATLASSIAN_CONFLUENCE_DEFAULT_PAGE_ID" placeholder="782407271" />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Tableau</h3>
+              <p class="section-copy">Tableau MCP uses server, site, and PAT values from your Tableau account.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="TABLEAU_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="TABLEAU_ENABLED" hidden>
+                <label class="field">
+                  <span>Server</span>
+                  <input id="TABLEAU_SERVER" placeholder="https://your-tableau-server" />
+                </label>
+                <label class="field">
+                  <span>Site Name</span>
+                  <input id="TABLEAU_SITE_NAME" placeholder="site-name" />
+                </label>
+                <label class="field">
+                  <span>PAT Name</span>
+                  <input id="TABLEAU_PAT_NAME" placeholder="personal-access-token-name" />
+                </label>
+                <label class="field">
+                  <span>PAT Value</span>
+                  <input id="TABLEAU_PAT_VALUE" type="password" data-secret="true" />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Custom Remote MCP</h3>
+              <p class="section-copy">Add remote MCP servers with a name and URL. They will load through <code>mcp-remote</code>.</p>
+              <div id="remote-mcp-list" class="remote-mcp-list"></div>
+              <div class="button-row remote-mcp-add-row">
+                <button id="add-remote-mcp" class="ghost" type="button">+ Add Server</button>
+              </div>
+            </section>
+          </div>
+
+          <footer class="view-foot">
+            <div id="mcp-status" class="status-text">External MCP settings are read from `~/.kira/config.env`.</div>
+            <div class="button-row">
+              <button id="reload-mcp-config" class="ghost">Reload</button>
+              <button id="save-mcp-settings" class="primary">Save MCP</button>
+              <button id="apply-mcp-settings" class="ghost">Save And Restart Engine</button>
+            </div>
+          </footer>
+        </section>
+
+        <section id="view-settings" class="view">
+          <header class="view-head">
+            <div>
+              <h2>Settings</h2>
+              <p class="inline-copy">Configure the KIRA Engine, Slack adapter, and model keys in one place.</p>
+            </div>
+            <div class="toolbar">
+              <button id="reload-config" class="ghost">Reload</button>
+            </div>
+          </header>
+
+          <div class="settings-panel">
+            <section class="settings-section">
+              <h3>Identity</h3>
+              <p class="section-copy">Choose the name this desktop agent shows inside the app and Slack.</p>
+              <div class="form-grid">
+                <label class="field full">
+                  <span>Agent Name</span>
+                  <input id="KIRACLAW_AGENT_NAME" placeholder="KIRA" />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Model</h3>
+              <p class="section-copy">Pick the provider the engine should use and register the keys it needs.</p>
+              <div class="form-grid">
+                <label class="field">
+                  <span>Provider</span>
+                  <select id="KIRACLAW_PROVIDER" class="form-select">
+                    <option value="claude">Claude</option>
+                    <option value="openai">OpenAI</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Model Override</span>
+                  <input id="KIRACLAW_MODEL" placeholder="claude-opus-4-6 or gpt-5.3-codex" />
+                </label>
+                <label class="field full provider-field" data-provider="claude">
+                  <span>Anthropic API Key</span>
+                  <input id="ANTHROPIC_API_KEY" type="password" placeholder="sk-ant-..." data-secret="true" />
+                </label>
+                <label class="field full provider-field" data-provider="openai">
+                  <span>OpenAI API Key</span>
+                  <input id="OPENAI_API_KEY" type="password" placeholder="sk-..." data-secret="true" />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
+              <h3>Workspace</h3>
+              <p class="section-copy">Keep the bridge mode simple: reuse `.kira` and choose the workspace this agent should use.</p>
+              <div class="form-grid">
+                <label class="field full">
+                  <span>Filesystem Base Dir</span>
+                  <div class="field-action-row">
+                    <input id="FILESYSTEM_BASE_DIR" placeholder="/Users/you/Documents/KIRA" />
+                    <button id="open-filesystem-base-dir" class="ghost" type="button">Open Folder</button>
+                  </div>
+                </label>
+              </div>
+            </section>
+          </div>
+
+          <footer class="view-foot">
+            <div id="settings-status" class="status-text">Settings are read from `~/.kira/config.env`.</div>
+            <div class="button-row">
+              <button id="save-settings" class="primary">Save Settings</button>
+              <button id="apply-settings" class="ghost">Save And Restart Engine</button>
+            </div>
+          </footer>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app/index.mjs"></script>
+  </body>
+</html>

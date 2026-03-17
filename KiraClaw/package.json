@@ -1,0 +1,12 @@
+{
+  "name": "kiraclaw",
+  "private": true,
+  "version": "0.1.0",
+  "description": "KiraClaw product workspace",
+  "workspaces": [
+    "apps/desktop"
+  ],
+  "scripts": {
+    "desktop:start": "npm --workspace apps/desktop run start"
+  }
+}
