@@ -125,7 +125,6 @@ class KiraClawEngine:
         selected_provider = provider or self.settings.provider
         selected_model = model or self.settings.model
         _ensure_provider_credentials(self.settings, selected_provider)
-        self.mcp_runtime.activate_deferred_servers()
         tools, skill_names = _configure_tools(self.settings)
         tool_names = [tool.name for tool in tools]
         mcp_tools = list(self.mcp_runtime.tools)

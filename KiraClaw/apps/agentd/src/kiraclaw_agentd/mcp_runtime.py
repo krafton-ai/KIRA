@@ -12,6 +12,9 @@ from kiraclaw_agentd.settings import KiraClawSettings
 logger = logging.getLogger(__name__)
 
 _MODULE_DIR = Path(__file__).resolve().parent
+DEFAULT_MCP_SERVER_START_TIMEOUT = 12.0
+EXTERNAL_MCP_SERVER_START_TIMEOUT = 60.0
+PLAYWRIGHT_MCP_SERVER_START_TIMEOUT = 90.0
 TIME_MCP_COMMAND = ["npx", "-y", "@theo.foobar/mcp-time"]
 FILES_MCP_COMMAND = [sys.executable, str(_MODULE_DIR / "files_mcp_server.py")]
 SCHEDULER_MCP_COMMAND = [sys.executable, str(_MODULE_DIR / "scheduler_mcp_server.py")]
@@ -23,7 +26,7 @@ GITLAB_MCP_COMMAND = ["npx", "-y", "@zereight/mcp-gitlab"]
 MS365_MCP_COMMAND = ["npx", "-y", "@batteryho/lokka-cached"]
 ATLASSIAN_MCP_COMMAND = ["npx", "-y", "mcp-remote", "https://mcp.atlassian.com/v1/sse"]
 TABLEAU_MCP_COMMAND = ["npx", "-y", "@tableau/mcp-server@latest"]
-DEFERRED_STARTUP_SERVER_NAMES = {"perplexity", "gitlab", "ms365"}
+PLAYWRIGHT_MCP_COMMAND = ["npx", "-y", "@playwright/mcp@latest"]
 
 
 def _is_present(value: str | None) -> bool:
@@ -115,7 +118,32 @@ def _external_mcp_configs(settings: KiraClawSettings) -> list[McpServerConfig]:
             )
         )
 
+    if settings.browser_enabled and settings.browser_profile_dir is not None:
+        command = [
+            *PLAYWRIGHT_MCP_COMMAND,
+            "--browser",
+            "chrome",
+            "--user-data-dir",
+            str(settings.browser_profile_dir),
+        ]
+        if settings.browser_output_dir is not None:
+            command.extend(["--output-dir", str(settings.browser_output_dir)])
+        configs.append(
+            McpServerConfig(
+                name="playwright",
+                command=command,
+            )
+        )
+
     return configs
+
+
+def _server_start_timeout(name: str) -> float:
+    if name == "playwright":
+        return PLAYWRIGHT_MCP_SERVER_START_TIMEOUT
+    if name in {"context7", "arxiv", "youtube-info", "perplexity", "gitlab", "ms365", "atlassian", "tableau"}:
+        return EXTERNAL_MCP_SERVER_START_TIMEOUT
+    return DEFAULT_MCP_SERVER_START_TIMEOUT
 
 
 def build_mcp_server_configs(settings: KiraClawSettings) -> list[McpServerConfig]:
@@ -172,19 +200,6 @@ def build_mcp_server_configs(settings: KiraClawSettings) -> list[McpServerConfig
         )
     configs.extend(_external_mcp_configs(settings))
     return configs
-
-
-def split_startup_mcp_server_configs(configs: list[McpServerConfig]) -> tuple[list[McpServerConfig], list[McpServerConfig]]:
-    eager: list[McpServerConfig] = []
-    deferred: list[McpServerConfig] = []
-    for config in configs:
-        if config.name in DEFERRED_STARTUP_SERVER_NAMES:
-            deferred.append(config)
-        else:
-            eager.append(config)
-    return eager, deferred
-
-
 class McpRuntime:
     def __init__(self, settings: KiraClawSettings) -> None:
         self.settings = settings
@@ -192,16 +207,42 @@ class McpRuntime:
         self.last_error: str | None = None
         self.failed_server_names: list[str] = []
         self._servers: list[McpServer] = []
-        self._deferred_configs: list[McpServerConfig] = []
         self.tools = []
         self.loaded_server_names: list[str] = []
         self.deferred_server_names: list[str] = []
         self._lock = threading.RLock()
 
     def _start_server(self, config: McpServerConfig) -> tuple[McpServer | None, str | None]:
+        server = McpServer(config)
+        holder: dict[str, Exception | None] = {"error": None}
+        started = threading.Event()
+        timeout_seconds = _server_start_timeout(config.name)
+
+        def _target() -> None:
+            try:
+                server.start()
+            except Exception as exc:
+                holder["error"] = exc
+            finally:
+                started.set()
+
         try:
-            server = McpServer(config)
-            server.start()
+            thread = threading.Thread(
+                target=_target,
+                name=f"mcp-start:{config.name}",
+                daemon=True,
+            )
+            thread.start()
+            if not started.wait(timeout=timeout_seconds):
+                try:
+                    server.stop()
+                except Exception:
+                    logger.exception("Failed to stop timed out MCP server %s", config.name)
+                raise TimeoutError(f"startup timed out after {timeout_seconds:.0f}s")
+
+            if holder["error"] is not None:
+                raise holder["error"]
+
             logger.info("MCP server started: %s (%s tools)", config.name, len(server.tools))
             return server, None
         except Exception as exc:
@@ -213,8 +254,6 @@ class McpRuntime:
             self.state = "running"
         elif self.last_error:
             self.state = "failed"
-        elif self._deferred_configs:
-            self.state = "configured"
         else:
             self.state = "disabled"
 
@@ -234,22 +273,18 @@ class McpRuntime:
             if server is None:
                 self.last_error = f"{config.name}: {error}"
                 failed_names.append(config.name)
-                continue
-
-            with self._lock:
-                self._servers.append(server)
-                self.tools.extend(server.tools)
-                self.loaded_server_names.append(config.name)
-                loaded_names.append(config.name)
+            else:
+                with self._lock:
+                    self._servers.append(server)
+                    self.tools.extend(server.tools)
+                    self.loaded_server_names.append(config.name)
+                    loaded_names.append(config.name)
 
         with self._lock:
             if failed_names:
                 for name in failed_names:
                     if name not in self.failed_server_names:
                         self.failed_server_names.append(name)
-            attempted = {config.name for config in configs}
-            self._deferred_configs = [config for config in self._deferred_configs if config.name not in attempted]
-            self.deferred_server_names = [config.name for config in self._deferred_configs]
             self._refresh_state_locked()
 
         return loaded_names
@@ -265,29 +300,13 @@ class McpRuntime:
                 self.failed_server_names = []
             return
 
-        eager_configs, deferred_configs = split_startup_mcp_server_configs(configs)
         with self._lock:
             self.state = "starting"
             self.last_error = None
             self.failed_server_names = []
-            self._deferred_configs = list(deferred_configs)
-            self.deferred_server_names = [config.name for config in deferred_configs]
-
-        for config in deferred_configs:
-            logger.info("Deferring MCP server startup until later: %s", config.name)
-
-        self._activate_configs(eager_configs)
-
-    def activate_deferred_servers(self) -> list[str]:
-        with self._lock:
-            pending = list(self._deferred_configs)
-            if not pending:
-                return []
-            self._deferred_configs = []
             self.deferred_server_names = []
-            self.state = "starting" if not self._servers else self.state
 
-        return self._activate_configs(pending)
+        self._activate_configs(configs)
 
     async def stop(self) -> None:
         for server in list(self._servers):
@@ -298,13 +317,12 @@ class McpRuntime:
 
         with self._lock:
             self._servers = []
-            self._deferred_configs = []
             self.tools = []
             self.loaded_server_names = []
             self.deferred_server_names = []
             self.failed_server_names = []
             self.last_error = None
-            self.state = "disabled" if not self.settings.mcp_enabled else "configured"
+            self.state = "disabled"
 
     @property
     def tool_names(self) -> list[str]:

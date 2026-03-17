@@ -27,6 +27,7 @@ export function updateHomeStatus(state, daemonStatus, runtime) {
   const landingPanel = byId("landing-panel");
   const avatarShell = byId("landing-avatar-shell");
   const heroTitle = byId("hero-title");
+  const heroVersion = byId("hero-version");
   const agentBubble = byId("agent-bubble");
   const startButton = byId("start-daemon");
   const restartButton = byId("restart-daemon");
@@ -51,6 +52,7 @@ export function updateHomeStatus(state, daemonStatus, runtime) {
   }
 
   setText(heroTitle, "KiraClaw");
+  setText(heroVersion, state.appMeta?.version ? `v${state.appMeta.version}` : "");
   setText(agentBubble, `My name is ${agentName}`);
 
   if (startButton && restartButton && stopButton) {

@@ -99,6 +99,8 @@ def create_app() -> FastAPI:
             "slack_allowed_names": settings.slack_allowed_names,
             "desktop_app_enabled": settings.desktop_app_enabled,
             "desktop_chat_enabled": settings.desktop_chat_enabled,
+            "browser_enabled": settings.browser_enabled,
+            "browser_profile_dir": str(settings.browser_profile_dir) if settings.browser_profile_dir else None,
             "single_gateway_per_host": settings.single_gateway_per_host,
             "session_scope": settings.session_scope,
             "session_record_limit": settings.session_record_limit,

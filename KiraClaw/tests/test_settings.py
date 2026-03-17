@@ -37,6 +37,7 @@ def _write_legacy_state(home: Path, workspace: Path) -> None:
                 'TABLEAU_SITE_NAME="craft"',
                 'TABLEAU_PAT_NAME="legacy-pat-name"',
                 'TABLEAU_PAT_VALUE="legacy-pat-value"',
+                'CHROME_ENABLED="true"',
                 f'FILESYSTEM_BASE_DIR="{workspace}"',
                 'MODEL_FOR_COMPLEX="opus"',
             ]
@@ -94,6 +95,9 @@ def test_auto_mode_prefers_legacy_kira_home(tmp_path, monkeypatch) -> None:
     assert settings.tableau_site_name == "craft"
     assert settings.tableau_pat_name == "legacy-pat-name"
     assert settings.tableau_pat_value == "legacy-pat-value"
+    assert settings.browser_enabled is True
+    assert settings.browser_profile_dir == workspace / "chrome_profile"
+    assert settings.browser_output_dir == workspace / "files"
     assert settings.slack_bot_token == "legacy-bot-token"
     assert settings.slack_allowed_names == "Jiho Jeon, Kris Choi, 전지호"
     assert settings.desktop_chat_enabled is True
@@ -136,6 +140,9 @@ def test_explicit_modern_home_keeps_openai_provider(tmp_path, monkeypatch) -> No
     assert settings.mcp_context7_enabled is True
     assert settings.mcp_arxiv_enabled is True
     assert settings.mcp_youtube_info_enabled is True
+    assert settings.browser_enabled is False
+    assert settings.browser_profile_dir == home / ".kiraclaw" / "workspaces" / "default" / "chrome_profile"
+    assert settings.browser_output_dir == home / ".kiraclaw" / "workspaces" / "default" / "files"
     assert settings.desktop_chat_enabled is True
     assert settings.legacy_config_loaded is False
     assert settings.schedule_file == home / ".kiraclaw" / "workspaces" / "default" / "schedule_data" / "schedules.json"

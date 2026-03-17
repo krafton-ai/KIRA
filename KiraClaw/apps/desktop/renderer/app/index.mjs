@@ -51,6 +51,15 @@ async function loadConfig() {
   clearChatThread(state);
 }
 
+async function loadAppMeta() {
+  try {
+    state.appMeta = await api.getAppMeta();
+  } catch {
+    state.appMeta = null;
+  }
+  renderDesktopState();
+}
+
 async function refreshRuntime() {
   try {
     state.daemonStatus = await api.getDaemonStatus();
@@ -193,6 +202,15 @@ function bindActions() {
     onSave: () => saveSettings({ restart: false }),
     onSaveAndRestart: () => saveSettings({ restart: true }),
   });
+  document.getElementById("open-browser-profile-setup")?.addEventListener("click", async () => {
+    setSettingsStatus("Opening Chrome profile setup...");
+    try {
+      const result = await api.openChromeProfileSetup();
+      setSettingsStatus(result.message || "Chrome profile setup opened.");
+    } catch (error) {
+      setSettingsStatus(`Profile setup failed: ${error.message}`);
+    }
+  });
   bindChatActions({
     api,
     state,
@@ -203,6 +221,7 @@ function bindActions() {
 document.addEventListener("DOMContentLoaded", async () => {
   initializePasswordToggles();
   bindActions();
+  await loadAppMeta();
   await loadConfig();
   await refreshRuntime();
   window.setInterval(() => {

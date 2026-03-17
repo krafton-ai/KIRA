@@ -1,4 +1,5 @@
 export const state = {
+  appMeta: null,
   config: {},
   daemonStatus: null,
   engineAction: {

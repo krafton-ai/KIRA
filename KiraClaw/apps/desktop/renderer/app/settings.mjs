@@ -1,4 +1,4 @@
-import { BOOLEAN_FIELDS, EXTERNAL_MCP_SERVER_NAMES, SETTINGS_FIELDS, SELECT_DEFAULTS } from "./constants.mjs";
+import { BOOLEAN_FIELDS, EXTERNAL_MCP_CONFIG_FIELDS, EXTERNAL_MCP_SERVER_NAMES, SETTINGS_FIELDS, SELECT_DEFAULTS } from "./constants.mjs";
 import { byId, setText } from "./dom.mjs";
 
 function normalizeBoolean(value) {
@@ -16,6 +16,7 @@ function runtimeValueForField(state, field) {
     KIRACLAW_MODEL: state.runtime.model,
     SLACK_TEAM_ID: state.runtime.slack_identity && state.runtime.slack_identity.team_id,
     SLACK_ALLOWED_NAMES: state.runtime.slack_allowed_names,
+    CHROME_ENABLED: String(Boolean(state.runtime.browser_enabled)),
     FILESYSTEM_BASE_DIR: state.runtime.workspace_dir,
     KIRACLAW_DESKTOP_CHAT_ENABLED: String(Boolean(state.runtime.desktop_chat_enabled)),
     KIRACLAW_PROACTIVE_AUTO_DISPATCH: String(Boolean(state.runtime.proactive_auto_dispatch)),
@@ -118,7 +119,7 @@ export function setSettingsStatus(message) {
 function syncMcpView(state) {
   const runtime = state.runtime;
   const configuredExternal = EXTERNAL_MCP_SERVER_NAMES.filter((name) => {
-    const fieldName = `${name.replace(/-/g, "_").toUpperCase()}_ENABLED`;
+    const fieldName = EXTERNAL_MCP_CONFIG_FIELDS[name];
     return normalizeBoolean(state.config[fieldName]);
   });
 
@@ -132,13 +133,9 @@ function syncMcpView(state) {
   }
 
   const externalLoaded = (runtime.mcp_loaded_servers || []).filter((name) => EXTERNAL_MCP_SERVER_NAMES.includes(name));
-  const externalDeferred = (runtime.mcp_deferred_servers || []).filter((name) => EXTERNAL_MCP_SERVER_NAMES.includes(name));
   const externalFailed = (runtime.mcp_failed_servers || []).filter((name) => EXTERNAL_MCP_SERVER_NAMES.includes(name));
   if (externalLoaded.length > 0) {
     const parts = [`Loaded now: ${externalLoaded.join(", ")}`];
-    if (externalDeferred.length > 0) {
-      parts.push(`Deferred at startup: ${externalDeferred.join(", ")}`);
-    }
     if (externalFailed.length > 0) {
       parts.push(`Failed: ${externalFailed.join(", ")}`);
     } else if (configuredExternal.length > externalLoaded.length) {
@@ -153,11 +150,6 @@ function syncMcpView(state) {
 
   if (runtime.mcp_last_error) {
     setText(byId("mcp-status"), runtime.mcp_last_error);
-    return;
-  }
-
-  if (externalDeferred.length > 0) {
-    setText(byId("mcp-status"), `Deferred at startup: ${externalDeferred.join(", ")}`);
     return;
   }
 
@@ -196,7 +188,7 @@ export function bindSettingsActions({ state, onReload, onSave, onSaveAndRestart 
     syncProviderFields();
   });
 
-  const externalToggleFields = ["PERPLEXITY_ENABLED", "GITLAB_ENABLED", "MS365_ENABLED", "ATLASSIAN_ENABLED", "TABLEAU_ENABLED"];
+  const externalToggleFields = ["CHROME_ENABLED", "PERPLEXITY_ENABLED", "GITLAB_ENABLED", "MS365_ENABLED", "ATLASSIAN_ENABLED", "TABLEAU_ENABLED"];
 
   for (const field of externalToggleFields) {
     byId(field)?.addEventListener("change", () => {

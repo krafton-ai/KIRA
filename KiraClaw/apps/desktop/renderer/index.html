@@ -32,10 +32,13 @@
             <div class="landing-center">
               <div id="landing-avatar-shell" class="landing-avatar-shell offline" aria-hidden="true">
                 <span class="avatar-halo"></span>
+                <img class="avatar-claw-mark avatar-claw-mark-left" src="../assets/claw.png" alt="" />
+                <img class="avatar-claw-mark avatar-claw-mark-right" src="../assets/claw.png" alt="" />
                 <div id="agent-bubble" class="agent-bubble">My name is KIRA</div>
                 <img class="landing-avatar" src="../assets/kira-icon.png" alt="KIRA icon" />
               </div>
               <h3 id="hero-title">KiraClaw</h3>
+              <div id="hero-version" class="hero-version">v0.0.0</div>
               <div id="engine-action-banner" class="engine-action-banner neutral" hidden>
                 <span id="engine-action-dot" class="engine-action-dot"></span>
                 <span id="engine-action-message"></span>
@@ -169,6 +172,26 @@
           </header>
 
           <div class="settings-panel">
+            <section class="settings-section">
+              <h3>Browser</h3>
+              <p class="section-copy">Chrome profile setup happens before the engine starts. The profile lives inside your configured workspace folder as <code>chrome_profile</code>.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="CHROME_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="CHROME_ENABLED" hidden>
+                <div class="field full browser-setup-actions">
+                  <button id="open-browser-profile-setup" class="ghost" type="button">Open Profile Setup</button>
+                  <p class="section-copy">Use this before browser MCP tasks to sign in with the same Chrome profile.</p>
+                </div>
+              </div>
+            </section>
+
             <section class="settings-section">
               <h3>Perplexity</h3>
               <p class="section-copy">Use the npm MCP package with your Perplexity API key.</p>

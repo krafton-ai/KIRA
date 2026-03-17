@@ -36,6 +36,7 @@ function openMainWindow() {
 
 app.whenReady().then(() => {
   registerIpcHandlers({
+    app,
     ipcMain,
     configStore,
     daemonController,

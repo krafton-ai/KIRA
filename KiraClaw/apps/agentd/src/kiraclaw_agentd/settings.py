@@ -103,6 +103,9 @@ class KiraClawSettings(BaseSettings):
     tableau_site_name: str = ""
     tableau_pat_name: str = ""
     tableau_pat_value: str = ""
+    browser_enabled: bool = False
+    browser_profile_dir: Path | None = None
+    browser_output_dir: Path | None = None
     max_turns: int = 64
     max_tokens: int = 16_384
     token_limit: int = 180_000
@@ -197,6 +200,10 @@ class KiraClawSettings(BaseSettings):
         if "schedule_file" not in explicit_fields:
             schedule_dir = self.schedule_dir or (self.workspace_dir / "schedule_data")
             object.__setattr__(self, "schedule_file", schedule_dir / "schedules.json")
+        if "browser_profile_dir" not in explicit_fields:
+            object.__setattr__(self, "browser_profile_dir", self.workspace_dir / "chrome_profile")
+        if "browser_output_dir" not in explicit_fields:
+            object.__setattr__(self, "browser_output_dir", self.workspace_dir / "files")
 
     def _resolve_data_dir(self, explicit_fields: set[str]) -> Path:
         if "data_dir" in explicit_fields:
@@ -282,6 +289,7 @@ class KiraClawSettings(BaseSettings):
             "ms365_enabled": "MS365_ENABLED",
             "atlassian_enabled": "ATLASSIAN_ENABLED",
             "tableau_enabled": "TABLEAU_ENABLED",
+            "browser_enabled": "CHROME_ENABLED",
             "proactive_auto_dispatch": "KIRACLAW_PROACTIVE_AUTO_DISPATCH",
         }
         for field_name, legacy_key in legacy_bool_field_map.items():
@@ -308,6 +316,7 @@ class KiraClawSettings(BaseSettings):
             "tableau_site_name": "TABLEAU_SITE_NAME",
             "tableau_pat_name": "TABLEAU_PAT_NAME",
             "tableau_pat_value": "TABLEAU_PAT_VALUE",
+            "browser_profile_dir": "CHROME_PROFILE_DIR",
         }
         for field_name, legacy_key in legacy_field_map.items():
             current_value = getattr(self, field_name)
@@ -336,6 +345,10 @@ class KiraClawSettings(BaseSettings):
             self.checker_failed_dir.mkdir(parents=True, exist_ok=True)
         if self.proactive_state_file:
             self.proactive_state_file.parent.mkdir(parents=True, exist_ok=True)
+        if self.browser_profile_dir:
+            self.browser_profile_dir.mkdir(parents=True, exist_ok=True)
+        if self.browser_output_dir:
+            self.browser_output_dir.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

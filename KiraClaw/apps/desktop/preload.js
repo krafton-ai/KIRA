@@ -28,6 +28,9 @@ async function request(path, options = {}) {
 }
 
 contextBridge.exposeInMainWorld("kiraclaw", {
+  getAppMeta() {
+    return ipcRenderer.invoke("get-app-meta");
+  },
   getConfig() {
     return ipcRenderer.invoke("get-config");
   },
@@ -36,6 +39,9 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   },
   getDaemonStatus() {
     return ipcRenderer.invoke("get-daemon-status");
+  },
+  openChromeProfileSetup() {
+    return ipcRenderer.invoke("open-chrome-profile-setup");
   },
   startDaemon() {
     return ipcRenderer.invoke("start-daemon");

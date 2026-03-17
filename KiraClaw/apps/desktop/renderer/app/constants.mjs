@@ -9,6 +9,7 @@ export const SETTINGS_FIELDS = [
   "SLACK_SIGNING_SECRET",
   "SLACK_TEAM_ID",
   "SLACK_ALLOWED_NAMES",
+  "CHROME_ENABLED",
   "PERPLEXITY_ENABLED",
   "PERPLEXITY_API_KEY",
   "GITLAB_ENABLED",
@@ -37,6 +38,7 @@ export const BOOLEAN_FIELDS = [
   "MS365_ENABLED",
   "ATLASSIAN_ENABLED",
   "TABLEAU_ENABLED",
+  "CHROME_ENABLED",
   "KIRACLAW_DESKTOP_CHAT_ENABLED",
   "KIRACLAW_PROACTIVE_AUTO_DISPATCH",
 ];
@@ -48,6 +50,7 @@ export const SELECT_DEFAULTS = {
   MS365_ENABLED: "false",
   ATLASSIAN_ENABLED: "false",
   TABLEAU_ENABLED: "false",
+  CHROME_ENABLED: "false",
   KIRACLAW_DESKTOP_CHAT_ENABLED: "true",
   KIRACLAW_PROACTIVE_AUTO_DISPATCH: "false",
 };
@@ -60,4 +63,14 @@ export const EXTERNAL_MCP_SERVER_NAMES = [
   "ms365",
   "atlassian",
   "tableau",
+  "playwright",
 ];
+
+export const EXTERNAL_MCP_CONFIG_FIELDS = {
+  playwright: "CHROME_ENABLED",
+  perplexity: "PERPLEXITY_ENABLED",
+  gitlab: "GITLAB_ENABLED",
+  ms365: "MS365_ENABLED",
+  atlassian: "ATLASSIAN_ENABLED",
+  tableau: "TABLEAU_ENABLED",
+};

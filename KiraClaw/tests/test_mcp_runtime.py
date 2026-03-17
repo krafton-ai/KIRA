@@ -6,7 +6,6 @@ from kiraclaw_agentd.mcp_runtime import (
     McpRuntime,
     TIME_MCP_COMMAND,
     build_mcp_server_configs,
-    split_startup_mcp_server_configs,
 )
 from kiraclaw_agentd.settings import KiraClawSettings
 
@@ -126,11 +125,12 @@ def test_mcp_runtime_builds_external_npm_configs(tmp_path) -> None:
         tableau_site_name="craft",
         tableau_pat_name="pat-name",
         tableau_pat_value="pat-value",
+        browser_enabled=True,
     )
 
     configs = build_mcp_server_configs(settings)
 
-    assert [config.name for config in configs] == ["perplexity", "gitlab", "ms365", "atlassian", "tableau"]
+    assert [config.name for config in configs] == ["perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright"]
     assert configs[0].env == {"PERPLEXITY_API_KEY": "perplexity-key"}
     assert configs[1].env["GITLAB_API_URL"] == "https://gitlab.com/api/v4"
     assert configs[2].env == {
@@ -145,9 +145,12 @@ def test_mcp_runtime_builds_external_npm_configs(tmp_path) -> None:
         "PAT_NAME": "pat-name",
         "PAT_VALUE": "pat-value",
     }
+    assert configs[5].command[:5] == ["npx", "-y", "@playwright/mcp@latest", "--browser", "chrome"]
+    assert "--user-data-dir" in configs[5].command
+    assert "--output-dir" in configs[5].command
 
 
-def test_mcp_runtime_defers_slow_external_startup(tmp_path) -> None:
+def test_mcp_runtime_includes_external_servers_for_startup(tmp_path) -> None:
     settings = KiraClawSettings(
         data_dir=tmp_path / "data",
         workspace_dir=tmp_path / "workspace",
@@ -175,15 +178,15 @@ def test_mcp_runtime_defers_slow_external_startup(tmp_path) -> None:
         tableau_site_name="craft",
         tableau_pat_name="pat-name",
         tableau_pat_value="pat-value",
+        browser_enabled=True,
     )
 
-    eager, deferred = split_startup_mcp_server_configs(build_mcp_server_configs(settings))
+    configs = build_mcp_server_configs(settings)
 
-    assert [config.name for config in eager] == ["atlassian", "tableau"]
-    assert [config.name for config in deferred] == ["perplexity", "gitlab", "ms365"]
+    assert [config.name for config in configs] == ["perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright"]
 
 
-def test_mcp_runtime_activates_deferred_servers_on_demand(tmp_path, monkeypatch) -> None:
+def test_mcp_runtime_start_loads_all_configs(tmp_path, monkeypatch) -> None:
     class FakeServer:
         def __init__(self, config):
             self.config = config
@@ -219,6 +222,7 @@ def test_mcp_runtime_activates_deferred_servers_on_demand(tmp_path, monkeypatch)
         ms365_tenant_id="tenant-id",
         atlassian_enabled=True,
         atlassian_confluence_site_url="https://acme.atlassian.net",
+        browser_enabled=True,
     )
 
     runtime = McpRuntime(settings)
@@ -227,15 +231,10 @@ def test_mcp_runtime_activates_deferred_servers_on_demand(tmp_path, monkeypatch)
 
     asyncio.run(runtime.start())
 
-    assert runtime.loaded_server_names == ["atlassian"]
-    assert runtime.deferred_server_names == ["perplexity", "gitlab", "ms365"]
-
-    loaded = runtime.activate_deferred_servers()
-
-    assert loaded == ["perplexity", "gitlab", "ms365"]
+    assert runtime.loaded_server_names == ["perplexity", "gitlab", "ms365", "atlassian", "playwright"]
     assert runtime.deferred_server_names == []
     assert runtime.failed_server_names == []
-    assert runtime.loaded_server_names == ["atlassian", "perplexity", "gitlab", "ms365"]
-    assert runtime.tool_names == ["atlassian_tool", "perplexity_tool", "gitlab_tool", "ms365_tool"]
+    assert runtime.loaded_server_names == ["perplexity", "gitlab", "ms365", "atlassian", "playwright"]
+    assert runtime.tool_names == ["perplexity_tool", "gitlab_tool", "ms365_tool", "atlassian_tool", "playwright_tool"]
 
     asyncio.run(runtime.stop())
