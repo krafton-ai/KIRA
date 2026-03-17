@@ -1,0 +1,120 @@
+{
+  "appId": "com.krafton.kira",
+  "productName": "KIRA",
+  "electronVersion": "39.0.0",
+  "mac": {
+    "category": "public.app-category.productivity",
+    "icon": "icons/icon.icns",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "entitlements.mac.plist",
+    "entitlementsInherit": "entitlements.mac.plist",
+    "notarize": true
+  },
+  "dmg": {
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  },
+  "win": {
+    "icon": "icons/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "KIRA"
+  },
+  "linux": {
+    "icon": "icons/icon.png",
+    "target": [
+      "AppImage"
+    ],
+    "category": "Office"
+  },
+  "files": [
+    "**/*",
+    "!**/node_modules/**/locales/!(en|ko).pak"
+  ],
+  "extraResources": [
+    {
+      "from": "../../apps/agentd/src",
+      "to": "kiraclaw/apps/agentd/src",
+      "filter": [
+        "**/*",
+        "!**/__pycache__/**",
+        "!**/*.pyc",
+        "!**/.DS_Store"
+      ]
+    },
+    {
+      "from": "kiraclaw.bridge.pyproject.toml",
+      "to": "kiraclaw/pyproject.toml"
+    },
+    {
+      "from": "../../uv.lock",
+      "to": "kiraclaw/uv.lock"
+    },
+    {
+      "from": "../../README.md",
+      "to": "kiraclaw/README.md"
+    },
+    {
+      "from": "../../../../KRIM/packages/krim",
+      "to": "kiraclaw/vendor/krim",
+      "filter": [
+        "pyproject.toml",
+        "README.md",
+        "src/**/*"
+      ]
+    },
+    {
+      "from": "../../../../KRIM/packages/krim-sdk",
+      "to": "kiraclaw/vendor/krim-sdk",
+      "filter": [
+        "pyproject.toml",
+        "README.md",
+        "src/**/*"
+      ]
+    }
+  ],
+  "publish": {
+    "provider": "s3",
+    "bucket": "kira-releases",
+    "region": "ap-northeast-2",
+    "path": "/download",
+    "acl": "public-read"
+  }
+}

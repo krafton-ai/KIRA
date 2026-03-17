@@ -1,0 +1,19 @@
+{
+  "extends": "./electron-builder.bridge.json",
+  "mac": {
+    "target": [
+      {
+        "target": "dir",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "identity": null,
+    "hardenedRuntime": false,
+    "entitlements": null,
+    "entitlementsInherit": null,
+    "notarize": false
+  },
+  "publish": null
+}

@@ -32,3 +32,40 @@ Renderer:
 
 Slack remains the first real channel.
 Desktop direct chat is still a thin client over the same daemon API.
+
+## Bridge Build
+
+KiraClaw keeps its own dev identity, but bridge releases for existing KIRA-Slack users
+should preserve the old updater lineage.
+
+Use:
+
+- `npm run build:bridge`
+- `npm run build:bridge:mac`
+- `npm run build:bridge:win`
+- `npm run build:bridge:smoke`
+- `npm run build:bridge:smoke:dir`
+
+The bridge build config is:
+
+- [electron-builder.bridge.json](/Users/batteryho/Documents/github/KIRA/KiraClaw/apps/desktop/electron-builder.bridge.json)
+- [electron-builder.bridge.smoke.json](/Users/batteryho/Documents/github/KIRA/KiraClaw/apps/desktop/electron-builder.bridge.smoke.json)
+
+Current scope of the bridge scaffold:
+
+- preserves `com.krafton.kira`
+- preserves the S3 updater feed
+- reuses the old icons and mac entitlements
+- stages the KiraClaw Python project under `process.resourcesPath/kiraclaw`
+- stages local `KRIM` and `krim-sdk` sources under `process.resourcesPath/kiraclaw/vendor`
+- packaged app starts the daemon with `uv run kiraclaw-agentd`
+
+Smoke build scope:
+
+- disables mac signing, hardened runtime, and notarization
+- targets a local packaged app smoke run first
+- keeps the same staged `process.resourcesPath/kiraclaw` layout so daemon startup can be checked before release signing work
+
+Current bridge assumption:
+
+- `uv` is available on the host machine, as it was in the KIRA-Slack line

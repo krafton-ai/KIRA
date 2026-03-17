@@ -57,27 +57,38 @@ def create_model(provider: str, model: str | None, max_tokens: int):
     raise ValueError(f"unknown provider: {provider}")
 
 
-def _discover_available_skills(settings: KiraClawSettings) -> dict[str, Skill]:
+def discover_available_skills(settings: KiraClawSettings) -> dict[str, Skill]:
     if not settings.skills_enabled:
         return {}
 
-    skills: dict[str, Skill] = {}
-    search_roots: list[Path] = [
-        settings.data_dir,
-        settings.workspace_dir / ".krim",
-        settings.workspace_dir,
-    ]
-    seen: set[Path] = set()
-    for root in search_roots:
-        if root in seen:
-            continue
-        seen.add(root)
-        skills.update(discover_skills(global_dir=root, project_dir=None))
-    return skills
+    return discover_skills(global_dir=settings.workspace_dir, project_dir=None)
+
+
+def list_available_skills(settings: KiraClawSettings) -> list[dict[str, str]]:
+    skills = discover_available_skills(settings)
+    rows: list[dict[str, str]] = []
+    workspace_root = settings.workspace_dir / "skills"
+
+    for key in sorted(skills.keys()):
+        skill = skills[key]
+        skill_path = Path(skill.path)
+        source = "unknown"
+        if skill_path.is_relative_to(workspace_root):
+            source = "workspace"
+        rows.append(
+            {
+                "id": key,
+                "name": skill.name,
+                "description": skill.description,
+                "path": str(skill_path),
+                "source": source,
+            }
+        )
+    return rows
 
 
 def _configure_tools(settings: KiraClawSettings):
-    skills = _discover_available_skills(settings)
+    skills = discover_available_skills(settings)
     if skills:
         tools, skill_tool = default_tools_with_skills()
     else:

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from kiraclaw_agentd.engine import KiraClawEngine, RunResult
+from kiraclaw_agentd.engine import KiraClawEngine, RunResult, list_available_skills
 from kiraclaw_agentd.memory_runtime import MemoryRuntime
 from kiraclaw_agentd.scheduler_runtime import SchedulerRuntime
 from kiraclaw_agentd.session_manager import SessionManager
@@ -96,6 +96,7 @@ def create_app() -> FastAPI:
             "model": settings.model,
             "agent_name": settings.agent_name,
             "skills_enabled": settings.skills_enabled,
+            "skill_count": len(list_available_skills(settings)),
             "mcp_enabled": settings.mcp_enabled,
             "mcp_time_enabled": settings.mcp_time_enabled,
             "mcp_files_enabled": settings.mcp_files_enabled,
@@ -160,6 +161,13 @@ def create_app() -> FastAPI:
     @app.get("/v1/watches")
     async def watches() -> dict:
         return {"watches": [watch.model_dump() for watch in watch_runtime.list_watches()]}
+
+    @app.get("/v1/skills")
+    async def skills() -> dict:
+        return {
+            "skills": list_available_skills(settings),
+            "workspace_skill_dir": str(settings.workspace_dir / "skills"),
+        }
 
     @app.get("/v1/watch-runs")
     async def watch_runs(limit: int = 50, watch_id: str | None = None) -> dict:

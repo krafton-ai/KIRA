@@ -11,6 +11,7 @@ export const state = {
     visible: false,
   },
   runtime: null,
+  skills: null,
   watches: [],
   watchDraft: false,
   watchDirty: false,

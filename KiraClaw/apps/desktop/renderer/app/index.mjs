@@ -4,6 +4,7 @@ import { byId, initializePasswordToggles } from "./dom.mjs";
 import { updateHomeStatus, bindHomeActions } from "./home.mjs";
 import { bindNavigation } from "./navigation.mjs";
 import { bindSettingsActions, applySettingsToForm, collectSettingsUpdates, setSettingsStatus } from "./settings.mjs";
+import { bindSkillsActions, renderSkillsState } from "./skills.mjs";
 import { state } from "./state.mjs";
 import { bindWatchActions, collectWatchPayload, getNewWatchId, renderWatchState, setWatchStatus, validateWatchPayload } from "./watch.mjs";
 
@@ -25,6 +26,9 @@ async function refreshActiveView() {
   await refreshRuntime();
   if (state.activeView === "watch") {
     await loadWatchData();
+  }
+  if (state.activeView === "skills") {
+    await loadSkills();
   }
 }
 
@@ -90,6 +94,17 @@ async function loadWatchData() {
     }
   } catch (error) {
     setWatchStatus(`Watch load failed: ${error.message}`);
+  }
+}
+
+async function loadSkills() {
+  try {
+    state.skills = await api.getSkills();
+    renderSkillsState(state);
+  } catch (error) {
+    state.skills = { skills: [] };
+    setSettingsStatus(`Skill load failed: ${error.message}`);
+    renderSkillsState(state);
   }
 }
 
@@ -300,6 +315,9 @@ function bindActions() {
       if (viewName === "watch") {
         loadWatchData().catch(() => {});
       }
+      if (viewName === "skills") {
+        loadSkills().catch(() => {});
+      }
       refreshRuntime().catch(() => {});
     },
   });
@@ -360,6 +378,23 @@ function bindActions() {
     onSave: saveWatch,
     onRunNow: runWatchNow,
     onDelete: deleteWatch,
+  });
+  bindSkillsActions({
+    state,
+    onReload: () => loadSkills(),
+    onOpenPath: async (targetPath) => {
+      if (!targetPath) {
+        setSettingsStatus("Skill folder is not configured.");
+        return;
+      }
+      setSettingsStatus("Opening skill folder...");
+      try {
+        const result = await api.openPath(targetPath);
+        setSettingsStatus(result.message || "Skill folder opened.");
+      } catch (error) {
+        setSettingsStatus(`Open Folder failed: ${error.message}`);
+      }
+    },
   });
 
   window.addEventListener("focus", () => {

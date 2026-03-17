@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from kiraclaw_agentd.engine import KiraClawEngine, _compose_prompt, _configure_tools, create_model
+from kiraclaw_agentd.engine import (
+    KiraClawEngine,
+    _compose_prompt,
+    _configure_tools,
+    create_model,
+    list_available_skills,
+)
 from kiraclaw_agentd.settings import KiraClawSettings
 
 
@@ -72,7 +78,7 @@ def test_configure_tools_discovers_workspace_skill_md(tmp_path) -> None:
     )
     settings.ensure_directories()
 
-    skill_dir = settings.workspace_dir / ".krim" / "skills" / "jira-reader"
+    skill_dir = settings.workspace_dir / "skills" / "jira-reader"
     skill_dir.mkdir(parents=True, exist_ok=True)
     (skill_dir / "SKILL.md").write_text(
         "---\nname: jira-reader\ndescription: Read Jira carefully\n---\nUse Jira tools.\n",
@@ -83,3 +89,55 @@ def test_configure_tools_discovers_workspace_skill_md(tmp_path) -> None:
 
     assert "skill" in [tool.name for tool in tools]
     assert skill_names == ["jira-reader"]
+
+
+def test_list_available_skills_reports_workspace_source(tmp_path) -> None:
+    settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=tmp_path / "workspace",
+        home_mode="modern",
+        slack_enabled=False,
+        skills_enabled=True,
+    )
+    settings.ensure_directories()
+
+    skill_dir = settings.workspace_dir / "skills" / "pptx"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: pptx\ndescription: Work with presentations\n---\nUse office files.\n",
+        encoding="utf-8",
+    )
+
+    rows = list_available_skills(settings)
+
+    assert rows == [
+        {
+            "id": "pptx",
+            "name": "pptx",
+            "description": "Work with presentations",
+            "path": str(skill_dir),
+            "source": "workspace",
+        }
+    ]
+
+
+def test_list_available_skills_ignores_global_kira_skill_dir(tmp_path) -> None:
+    settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=tmp_path / "workspace",
+        home_mode="modern",
+        slack_enabled=False,
+        skills_enabled=True,
+    )
+    settings.ensure_directories()
+
+    global_skill_dir = settings.data_dir / "skills" / "ignored"
+    global_skill_dir.mkdir(parents=True, exist_ok=True)
+    (global_skill_dir / "SKILL.md").write_text(
+        "---\nname: ignored\ndescription: Should not be loaded\n---\nIgnore me.\n",
+        encoding="utf-8",
+    )
+
+    rows = list_available_skills(settings)
+
+    assert rows == []

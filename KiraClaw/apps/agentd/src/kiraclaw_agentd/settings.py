@@ -346,8 +346,7 @@ class KiraClawSettings(BaseSettings):
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
-        (self.data_dir / "skills").mkdir(parents=True, exist_ok=True)
-        (self.workspace_dir / ".krim" / "skills").mkdir(parents=True, exist_ok=True)
+        (self.workspace_dir / "skills").mkdir(parents=True, exist_ok=True)
         if self.watch_dir:
             self.watch_dir.mkdir(parents=True, exist_ok=True)
         if self.watch_state_file:

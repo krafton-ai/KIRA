@@ -46,6 +46,9 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   openFilesystemBaseDir(targetPath) {
     return ipcRenderer.invoke("open-filesystem-base-dir", targetPath);
   },
+  openPath(targetPath) {
+    return ipcRenderer.invoke("open-path", targetPath);
+  },
   startDaemon() {
     return ipcRenderer.invoke("start-daemon");
   },
@@ -57,6 +60,9 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   },
   getRuntime() {
     return request("/v1/runtime");
+  },
+  getSkills() {
+    return request("/v1/skills");
   },
   getWatches() {
     return request("/v1/watches");

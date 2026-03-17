@@ -1,13 +1,25 @@
 {
   "name": "@kiraclaw/desktop",
+  "productName": "KiraClaw",
   "private": true,
   "version": "0.1.0",
   "description": "KiraClaw desktop shell",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build:bridge": "electron-builder --config electron-builder.bridge.json",
+    "build:bridge:mac": "electron-builder --mac --config electron-builder.bridge.json",
+    "build:bridge:win": "electron-builder --win --config electron-builder.bridge.json",
+    "build:bridge:smoke": "electron-builder --mac --config electron-builder.bridge.smoke.json",
+    "build:bridge:smoke:dir": "electron-builder --dir --mac --config electron-builder.bridge.smoke.json"
+  },
+  "dependencies": {
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
-    "electron": "^39.0.0"
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.12",
+    "png-to-ico": "^3.0.1"
   }
 }
