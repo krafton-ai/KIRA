@@ -1,10 +1,8 @@
-# KIRA-Slack GitHub Actions Workflow
-# Builds and deploys using 3 parallel jobs:
-#   - deploy-mac: Builds macOS app on self-hosted runner (with Apple code signing)
-#   - deploy-windows: Builds Windows app on GitHub-hosted Windows runner
-#   - deploy-docs: Deploys VitePress documentation on GitHub-hosted Ubuntu runner
+# KIRA Bridge GitHub Actions Workflow
+# Tag pushes publish a bridge build that preserves the old KIRA updater lineage
+# while shipping the new KiraClaw desktop codebase.
 
-name: "KIRA-Slack: Build and Deploy"
+name: "KIRA Bridge: Build and Deploy"
 
 on:
   push:
@@ -13,14 +11,16 @@ on:
 
 env:
   NODE_VERSION: "22"
-  WORKING_DIR: KIRA-Slack
+  CLAW_WORKING_DIR: KiraClaw
+  CLAW_DESKTOP_DIR: KiraClaw/apps/desktop
+  DOCS_WORKING_DIR: KIRA-Slack/vitepress-app
 
 jobs:
   # ===========================
   # Job 1: macOS Build
   # ===========================
   deploy-mac:
-    name: Build and Deploy macOS App
+    name: Build and Deploy macOS Bridge App
     runs-on: self-hosted  # macOS self-hosted runner (requires Apple code signing)
     timeout-minutes: 120  # Allows time for notarization
 
@@ -49,18 +49,24 @@ jobs:
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          cd ${{ env.WORKING_DIR }}/electron-app && npm ci
+          cd ${{ env.CLAW_WORKING_DIR }} && npm ci
 
-      - name: Extract version from tag and update package.json
+      - name: Extract version from tag and update KiraClaw package versions
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           VERSION=${GITHUB_REF_NAME#v}
           echo "📦 Version: $VERSION"
-          cd ${{ env.WORKING_DIR }}/electron-app
-          npm version $VERSION --no-git-tag-version
+          VERSION="$VERSION" node -e 'const fs=require("fs"); const version=process.env.VERSION; const files=process.argv.slice(1); for (const file of files) { const pkg=JSON.parse(fs.readFileSync(file,"utf8")); pkg.version=version; fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`); }' "${{ env.CLAW_WORKING_DIR }}/package.json" "${{ env.CLAW_DESKTOP_DIR }}/package.json"
 
-      - name: Build and Deploy macOS App
+      - name: Verify bridge release preflight
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          cd ${{ env.CLAW_DESKTOP_DIR }}
+          npm run verify:bridge
+
+      - name: Build and Deploy macOS Bridge App
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -73,23 +79,23 @@ jobs:
         run: |
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-          cd ${{ env.WORKING_DIR }}/electron-app
-          npm run deploy:mac
+          cd ${{ env.CLAW_DESKTOP_DIR }}
+          npm run deploy:bridge:mac
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-build-${{ github.ref_name }}
           path: |
-            ${{ env.WORKING_DIR }}/electron-app/dist/*.dmg
-            ${{ env.WORKING_DIR }}/electron-app/dist/*.zip
+            ${{ env.CLAW_DESKTOP_DIR }}/dist/*.dmg
+            ${{ env.CLAW_DESKTOP_DIR }}/dist/*.zip
           retention-days: 30
 
   # ===========================
   # Job 2: Windows Build
   # ===========================
   deploy-windows:
-    name: Build and Deploy Windows App
+    name: Build and Deploy Windows Bridge App
     runs-on: windows-latest
     timeout-minutes: 60
 
@@ -104,33 +110,32 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd ${{ env.WORKING_DIR }}/electron-app
+          cd ${{ env.CLAW_WORKING_DIR }}
           npm ci
 
-      - name: Extract version from tag and update package.json
+      - name: Extract version from tag and update KiraClaw package versions
         shell: bash
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "📦 Version: $VERSION"
-          cd ${{ env.WORKING_DIR }}/electron-app
-          npm version $VERSION --no-git-tag-version
+          VERSION="$VERSION" node -e 'const fs=require("fs"); const version=process.env.VERSION; const files=process.argv.slice(1); for (const file of files) { const pkg=JSON.parse(fs.readFileSync(file,"utf8")); pkg.version=version; fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`); }' "${{ env.CLAW_WORKING_DIR }}/package.json" "${{ env.CLAW_DESKTOP_DIR }}/package.json"
 
-      - name: Build and Deploy Windows App
+      - name: Build and Deploy Windows Bridge App
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ap-northeast-2
           CSC_IDENTITY_AUTO_DISCOVERY: false  # Skip code signing
         run: |
-          cd ${{ env.WORKING_DIR }}/electron-app
-          npm run deploy:win
+          cd ${{ env.CLAW_DESKTOP_DIR }}
+          npm run deploy:bridge:win
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-build-${{ github.ref_name }}
           path: |
-            ${{ env.WORKING_DIR }}/electron-app/dist/*.exe
+            ${{ env.CLAW_DESKTOP_DIR }}/dist/*.exe
           retention-days: 30
 
   # ===========================
@@ -153,19 +158,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd ${{ env.WORKING_DIR }}/vitepress-app
+          cd ${{ env.DOCS_WORKING_DIR }}
           npm ci
 
       - name: Extract version and update docs
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "📦 Version: $VERSION"
-          cd ${{ env.WORKING_DIR }}/vitepress-app
+          cd ${{ env.DOCS_WORKING_DIR }}
           node scripts/sync-version.js $VERSION
 
       - name: Build VitePress docs
         run: |
-          cd ${{ env.WORKING_DIR }}/vitepress-app
+          cd ${{ env.DOCS_WORKING_DIR }}
           npm run docs:build
 
       - name: Configure AWS credentials
@@ -177,7 +182,7 @@ jobs:
 
       - name: Deploy to S3
         run: |
-          cd ${{ env.WORKING_DIR }}/vitepress-app
+          cd ${{ env.DOCS_WORKING_DIR }}
           aws s3 sync .vitepress/dist s3://kira-releases --delete --exclude 'download/*' --exclude 'videos/*'
 
       - name: Invalidate CloudFront cache

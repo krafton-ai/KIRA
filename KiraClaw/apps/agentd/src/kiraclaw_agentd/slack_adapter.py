@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import dataclass
 import logging
 import re
 from typing import Any
@@ -10,11 +11,27 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_bolt.async_app import AsyncApp
 from slack_sdk.web.async_client import AsyncWebClient
 
+from kiraclaw_agentd.channel_debounce import KeyedDebouncer
 from kiraclaw_agentd.session_manager import RunRecord, SessionManager
 from kiraclaw_agentd.settings import KiraClawSettings
+from kiraclaw_agentd.tool_event_summary import append_tool_summary
 
 logger = logging.getLogger(__name__)
 _APP_MENTION_RE = re.compile(r"<@[^>]+>")
+_CHANNEL_DEBOUNCE_SECONDS = 5.0
+
+
+@dataclass
+class _BufferedSlackEvent:
+    event: dict[str, Any]
+    session_id: str
+    channel: str
+    reply_thread_ts: str | None
+    user: str
+    user_name: str
+    prompt: str
+    mention: bool
+    client: Any
 
 
 def _normalize_text(text: str) -> str:
@@ -31,13 +48,44 @@ def _is_authorized_user_name(user_name: str, allowed_names: str) -> bool:
         return True
 
     normalized_user_name = user_name.strip().lower()
-    return any(token.lower() in normalized_user_name for token in tokens)
+    compact_user_name = "".join(normalized_user_name.split())
+    for token in tokens:
+        normalized_token = token.lower()
+        compact_token = "".join(normalized_token.split())
+        if normalized_token in normalized_user_name or compact_token in compact_user_name:
+            return True
+    return False
 
 
-def _clean_prompt_text(text: str, *, mention: bool) -> str:
+def _clean_prompt_text(text: str, *, mention: bool, agent_name: str | None = None) -> str:
     if mention:
-        text = _APP_MENTION_RE.sub(" ", text)
+        replacement = f" {agent_name.strip()} " if agent_name and agent_name.strip() else " KiraClaw "
+        text = _APP_MENTION_RE.sub(replacement, text)
     return _normalize_text(text)
+
+
+def _build_delivery_context_prefix(channel: str, thread_ts: str | None) -> str:
+    lines = [
+        "Current Slack delivery context for this conversation:",
+        f"- channel_id: {channel}",
+    ]
+    if thread_ts:
+        lines.append(f"- thread_ts: {thread_ts}")
+    lines.extend(
+        [
+            "For an ordinary reply to this same conversation, prefer speak.",
+            "Use Slack tools only when you need a file upload, reaction, thread-specific control, or proactive delivery.",
+            "If you do need to use a Slack tool in this same conversation, use these exact identifiers.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _merge_context_prefix(*parts: str | None) -> str | None:
+    merged = [part.strip() for part in parts if part and part.strip()]
+    if not merged:
+        return None
+    return "\n\n".join(merged)
 
 
 def _strip_bot_mention(text: str, bot_user_id: str | None) -> str:
@@ -61,7 +109,7 @@ def _session_id_from_event(event: dict[str, Any]) -> str:
     channel = event.get("channel", "unknown")
     if _is_dm(event):
         return f"slack:dm:{channel}"
-    thread = event.get("thread_ts") or event.get("ts") or "root"
+    thread = event.get("thread_ts") or "main"
     return f"slack:{channel}:{thread}"
 
 
@@ -71,16 +119,41 @@ def _reply_thread_ts_from_event(event: dict[str, Any]) -> str | None:
     return event.get("thread_ts") or event.get("ts")
 
 
-def _should_handle_message(event: dict[str, Any]) -> bool:
-    if event.get("subtype"):
+def _debounce_key_for_event(session_id: str, event: dict[str, Any], user: str) -> str:
+    if _is_dm(event):
+        return f"{session_id}:{user}"
+    return session_id
+
+
+def _merge_prompt_text(items: list[_BufferedSlackEvent]) -> str:
+    if not items:
+        return ""
+    if _is_dm(items[-1].event):
+        return "\n".join(item.prompt for item in items if item.prompt.strip())
+
+    lines = ["Recent room messages:"]
+    for item in items:
+        text = item.prompt.strip()
+        if not text:
+            continue
+        lines.append(f"- {item.user_name}: {text}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _is_human_message_event(event: dict[str, Any]) -> bool:
+    if event.get("subtype") or event.get("bot_id"):
         return False
-    if event.get("bot_id"):
-        return False
-    return _is_dm(event)
+    return bool(event.get("user"))
 
 
 class SlackGateway:
-    def __init__(self, session_manager: SessionManager, settings: KiraClawSettings) -> None:
+    def __init__(
+        self,
+        session_manager: SessionManager,
+        settings: KiraClawSettings,
+        *,
+        debounce_seconds: float = _CHANNEL_DEBOUNCE_SECONDS,
+    ) -> None:
         self.session_manager = session_manager
         self.settings = settings
         self.app: AsyncApp | None = None
@@ -91,6 +164,11 @@ class SlackGateway:
         self.identity: dict[str, str] = {}
         self._user_name_cache: dict[str, str] = {}
         self.socket_mode_validated: bool = False
+        self._debouncer = KeyedDebouncer[_BufferedSlackEvent](
+            delay_seconds=debounce_seconds,
+            on_flush=self._flush_debounced_events,
+            label="slack",
+        )
         if self.configured:
             self.state = "configured"
             self._ensure_app()
@@ -110,15 +188,22 @@ class SlackGateway:
 
         @self.app.event("app_mention")
         async def on_app_mention(event, client, logger):
+            if not _is_human_message_event(event):
+                return
             logger.info("Slack app mention received: channel=%s user=%s", event.get("channel"), event.get("user"))
             await self._schedule_event(event, client, logger, mention=True)
 
         @self.app.event("message")
         async def on_message(event, client, logger):
-            if not _should_handle_message(event):
+            if not _is_human_message_event(event):
                 return
-            logger.info("Slack DM received: channel=%s user=%s", event.get("channel"), event.get("user"))
-            await self._schedule_event(event, client, logger, mention=False)
+            logger.info("Slack message received: channel=%s user=%s", event.get("channel"), event.get("user"))
+            await self._schedule_event(
+                event,
+                client,
+                logger,
+                mention=bool(_APP_MENTION_RE.search(str(event.get("text", "")))),
+            )
 
     def _ensure_app(self) -> None:
         if self.app is not None:
@@ -190,6 +275,7 @@ class SlackGateway:
             logger.exception("Slack gateway failed to start")
 
     async def stop(self) -> None:
+        await self._debouncer.stop()
         if self._runner_task and not self._runner_task.done():
             self._runner_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -240,6 +326,8 @@ class SlackGateway:
         return user_id
 
     async def _schedule_event(self, event: dict[str, Any], client, logger, mention: bool) -> None:
+        if not _is_human_message_event(event):
+            return
         text = event.get("text", "").strip()
         if not text:
             return
@@ -252,11 +340,15 @@ class SlackGateway:
         if not _is_authorized_user_name(user_name, self.settings.slack_allowed_names):
             logger.info("Ignoring unauthorized Slack user: user=%s name=%s", user, user_name)
             return
-        cleaned_text = _clean_prompt_text(text, mention=mention)
+        cleaned_text = _clean_prompt_text(
+            text,
+            mention=mention,
+            agent_name=self.settings.agent_name,
+        )
         if not cleaned_text:
             return
         logger.info(
-            "Scheduling Slack run: session_id=%s channel=%s user=%s name=%s mention=%s dm=%s",
+            "Queueing Slack run with debounce: session_id=%s channel=%s user=%s name=%s mention=%s dm=%s",
             session_id,
             channel,
             user,
@@ -265,8 +357,9 @@ class SlackGateway:
             _is_dm(event),
         )
 
-        asyncio.create_task(
-            self._run_for_event(
+        await self._debouncer.enqueue(
+            _debounce_key_for_event(session_id, event, user),
+            _BufferedSlackEvent(
                 event=event,
                 session_id=session_id,
                 channel=channel,
@@ -277,7 +370,27 @@ class SlackGateway:
                 mention=mention,
                 client=client,
             ),
-            name=f"slack-run:{session_id}",
+        )
+
+    async def _flush_debounced_events(self, items: list[_BufferedSlackEvent]) -> None:
+        last = items[-1]
+        merged_prompt = _merge_prompt_text(items)
+        excluded_timestamps = {
+            str(item.event.get("ts"))
+            for item in items
+            if item.event.get("ts")
+        }
+        await self._run_for_event(
+            event=last.event,
+            session_id=last.session_id,
+            channel=last.channel,
+            reply_thread_ts=last.reply_thread_ts,
+            user=last.user,
+            user_name=last.user_name,
+            prompt=merged_prompt or last.prompt,
+            mention=last.mention,
+            client=last.client,
+            excluded_timestamps=excluded_timestamps,
         )
 
     async def _run_for_event(
@@ -292,20 +405,24 @@ class SlackGateway:
         prompt: str,
         mention: bool,
         client,
+        excluded_timestamps: set[str] | None = None,
     ) -> None:
         metadata = {
             "channel": channel,
             "thread_ts": reply_thread_ts,
             "user": user,
             "user_name": user_name,
-            "source": "slack-app-mention" if mention else "slack-dm",
+            "source": "slack-dm" if _is_dm(event) else "slack-group",
         }
-        context_prefix = None
+        delivery_context = _build_delivery_context_prefix(channel, reply_thread_ts)
+        context_prefix = delivery_context
         if not self.session_manager.get_session_records(session_id):
-            context_prefix = await self._build_slack_bootstrap_context(
+            bootstrap_context = await self._build_slack_bootstrap_context(
                 client=client,
                 event=event,
+                excluded_timestamps=excluded_timestamps,
             )
+            context_prefix = _merge_context_prefix(delivery_context, bootstrap_context)
         record = await self.session_manager.run(
             session_id=session_id,
             prompt=prompt,
@@ -317,13 +434,27 @@ class SlackGateway:
     async def _publish_result(self, client, channel: str, thread_ts: str | None, record: RunRecord) -> None:
         if record.state == "failed":
             text = f"Run failed.\n{record.error or 'Unknown error'}"
-        else:
-            text = (record.result.final_response if record.result else "") or "Run completed without a final response."
-        await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
+            await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
+            return
 
-    async def _build_slack_bootstrap_context(self, client, event: dict[str, Any]) -> str | None:
+        spoken_messages = list(record.result.spoken_messages) if record.result else []
+        if spoken_messages:
+            rendered_messages = list(spoken_messages)
+            rendered_messages[-1] = append_tool_summary(rendered_messages[-1], record.result.tool_events)
+            for text in rendered_messages:
+                await client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
+            return
+
+        return
+
+    async def _build_slack_bootstrap_context(
+        self,
+        client,
+        event: dict[str, Any],
+        excluded_timestamps: set[str] | None = None,
+    ) -> str | None:
         try:
-            messages = await self._fetch_bootstrap_messages(client, event)
+            messages = await self._fetch_bootstrap_messages(client, event, excluded_timestamps=excluded_timestamps)
         except Exception as exc:
             logger.warning("Failed to fetch Slack history bootstrap: %s", exc)
             return None
@@ -343,7 +474,14 @@ class SlackGateway:
 
         return "\n".join(lines) if len(lines) > 1 else None
 
-    async def _fetch_bootstrap_messages(self, client, event: dict[str, Any]) -> list[dict[str, Any]]:
+    async def _fetch_bootstrap_messages(
+        self,
+        client,
+        event: dict[str, Any],
+        *,
+        excluded_timestamps: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        excluded = excluded_timestamps or set()
         current_ts = event.get("ts")
         if _is_dm(event):
             response = await client.conversations_history(
@@ -354,7 +492,11 @@ class SlackGateway:
             )
             messages = response.get("messages", [])
             messages.reverse()
-            return [message for message in messages if message.get("text")]
+            return [
+                message
+                for message in messages
+                if message.get("text") and str(message.get("ts")) not in excluded
+            ]
 
         thread_ts = event.get("thread_ts")
         if not thread_ts:
@@ -368,7 +510,11 @@ class SlackGateway:
         return [
             message
             for message in response.get("messages", [])
-            if message.get("text") and _ts_value(message.get("ts")) < current_value
+            if (
+                message.get("text")
+                and _ts_value(message.get("ts")) < current_value
+                and str(message.get("ts")) not in excluded
+            )
         ]
 
     async def _speaker_for_message(self, client, message: dict[str, Any]) -> str:

@@ -3,13 +3,17 @@
   "productName": "KiraClaw",
   "private": true,
   "version": "0.1.0",
+  "author": "KRAFTON AI",
   "description": "KiraClaw desktop shell",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "verify:bridge": "bash ../../scripts/verify_bridge_release.sh",
     "build:bridge": "electron-builder --config electron-builder.bridge.json",
     "build:bridge:mac": "electron-builder --mac --config electron-builder.bridge.json",
     "build:bridge:win": "electron-builder --win --config electron-builder.bridge.json",
+    "deploy:bridge:mac": "electron-builder --mac --publish always --config electron-builder.bridge.json",
+    "deploy:bridge:win": "electron-builder --win --publish always --config electron-builder.bridge.json",
     "build:bridge:smoke": "electron-builder --mac --config electron-builder.bridge.smoke.json",
     "build:bridge:smoke:dir": "electron-builder --dir --mac --config electron-builder.bridge.smoke.json"
   },

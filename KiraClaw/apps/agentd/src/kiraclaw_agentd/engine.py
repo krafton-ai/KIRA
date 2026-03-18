@@ -11,9 +11,12 @@ from krim_sdk.skills import Skill, discover_skills
 from krim_sdk.tools import BashTool, SkillTool, default_tools, default_tools_with_skills
 
 from kiraclaw_agentd.mcp_runtime import McpRuntime
+from kiraclaw_agentd.memory_tools import build_memory_tools
 from kiraclaw_agentd.settings import KiraClawSettings
 from kiraclaw_agentd.slack_tools import build_slack_tools
+from kiraclaw_agentd.speak_tools import build_speak_tools
 from kiraclaw_agentd.system_prompt import build_system_prompt
+from kiraclaw_agentd.telegram_tools import build_telegram_tools
 
 
 @dataclass
@@ -21,6 +24,18 @@ class RunResult:
     final_response: str
     streamed_text: str
     tool_events: list[dict] = field(default_factory=list)
+    spoken_messages: list[str] = field(default_factory=list)
+
+    @property
+    def internal_summary(self) -> str:
+        return self.final_response
+
+    @property
+    def public_response_text(self) -> str:
+        spoken = [text.strip() for text in self.spoken_messages if str(text).strip()]
+        if spoken:
+            return "\n\n".join(spoken)
+        return ""
 
 
 class CapturingEventHandler(NullEventHandler):
@@ -87,8 +102,12 @@ def list_available_skills(settings: KiraClawSettings) -> list[dict[str, str]]:
     return rows
 
 
-def _configure_tools(settings: KiraClawSettings):
+def _configure_tools(
+    settings: KiraClawSettings,
+    tool_context: dict[str, object] | None = None,
+):
     skills = discover_available_skills(settings)
+    skill_rows = list_available_skills(settings)
     if skills:
         tools, skill_tool = default_tools_with_skills()
     else:
@@ -109,8 +128,11 @@ def _configure_tools(settings: KiraClawSettings):
     if isinstance(skill_tool, SkillTool):
         skill_tool.configure(skills)
 
+    tools.extend(build_speak_tools(settings, tool_context=tool_context))
+    tools.extend(build_memory_tools(settings, tool_context=tool_context))
     tools.extend(build_slack_tools(settings))
-    return tools, list(skills.keys())
+    tools.extend(build_telegram_tools(settings))
+    return tools, skill_rows
 
 
 def _ensure_provider_credentials(settings: KiraClawSettings, provider: str) -> None:
@@ -154,11 +176,15 @@ class KiraClawEngine:
         model: str | None = None,
         conversation_context: str | None = None,
         memory_context: str | None = None,
+        tool_context: dict[str, object] | None = None,
     ) -> RunResult:
         selected_provider = provider or self.settings.provider
         selected_model = model or self.settings.model
         _ensure_provider_credentials(self.settings, selected_provider)
-        tools, skill_names = _configure_tools(self.settings)
+        run_tool_context = dict(tool_context or {})
+        spoken_messages: list[str] = []
+        run_tool_context["__spoken_messages__"] = spoken_messages
+        tools, skill_rows = _configure_tools(self.settings, tool_context=run_tool_context)
         tool_names = [tool.name for tool in tools]
         mcp_tools = list(self.mcp_runtime.tools)
         mcp_tool_names = [tool.name for tool in mcp_tools]
@@ -171,7 +197,13 @@ class KiraClawEngine:
                 max_tokens=self.settings.max_tokens,
             ),
             provider=selected_provider,
-            system_prompt=build_system_prompt(self.settings.agent_name, tool_names, skill_names, mcp_tool_names),
+            system_prompt=build_system_prompt(
+                self.settings.agent_name,
+                tool_names,
+                skill_rows,
+                mcp_tool_names,
+                agent_persona=self.settings.agent_persona,
+            ),
             tools=tools,
             mcp_tools=mcp_tools,
             options=AgentOptions(
@@ -187,16 +219,17 @@ class KiraClawEngine:
         if handler.model_errors:
             raise RuntimeError(handler.model_errors[-1])
 
-        final_response = handler.summary or (agent.last_response or "")
-        if not final_response and not handler.stream_chunks and not handler.tool_events:
+        internal_summary = handler.summary or (agent.last_response or "")
+        if not internal_summary and not handler.stream_chunks and not handler.tool_events and not spoken_messages:
             raise RuntimeError(
                 "Agent run completed without a final response. "
                 "Check provider credentials and model configuration."
             )
         return RunResult(
-            final_response=final_response,
+            final_response=internal_summary,
             streamed_text="".join(handler.stream_chunks),
             tool_events=handler.tool_events,
+            spoken_messages=spoken_messages,
         )
 
 

@@ -72,7 +72,9 @@ def test_mcp_runtime_builds_files_and_scheduler_configs(tmp_path) -> None:
     assert [config.name for config in configs] == ["files", "scheduler"]
     assert configs[0].env == {"KIRACLAW_WORKSPACE_DIR": str(tmp_path / "workspace")}
     assert configs[1].env == {
-        "KIRACLAW_SCHEDULE_FILE": str(tmp_path / "workspace" / "schedule_data" / "schedules.json")
+        "KIRACLAW_SCHEDULE_FILE": str(tmp_path / "workspace" / "schedule_data" / "schedules.json"),
+        "KIRACLAW_HOST": "127.0.0.1",
+        "KIRACLAW_PORT": "8787",
     }
 
 

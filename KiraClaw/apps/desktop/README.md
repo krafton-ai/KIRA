@@ -8,6 +8,8 @@ Current scope:
 - edit `~/.kira/config.env`
 - run direct desktop chat through the same daemon API
 - surface a simple branded home screen for the local agent
+- expose name and persona settings for the agent identity
+- show skills and schedules from the current workspace
 
 The code is intentionally split by responsibility.
 
@@ -30,8 +32,14 @@ Renderer:
 - `renderer/app/dom.mjs`: small DOM helpers and secret field toggles
 - `renderer/app/state.mjs`: shared renderer state
 
-Slack remains the first real channel.
-Desktop direct chat is still a thin client over the same daemon API.
+Slack remains the first real channel, with Telegram as a lightweight second channel.
+Desktop direct chat is still a thin client over the same daemon API, but it now exposes both:
+
+- internal run summaries
+- spoken outward replies when the agent actually uses `speak`
+
+The daemon API also returns `internal_summary` explicitly now. The older `final_response`
+wire field is still present for compatibility, but it refers to the same internal summary.
 
 ## Bridge Build
 
@@ -40,6 +48,7 @@ should preserve the old updater lineage.
 
 Use:
 
+- `npm run verify:bridge`
 - `npm run build:bridge`
 - `npm run build:bridge:mac`
 - `npm run build:bridge:win`
@@ -66,6 +75,15 @@ Smoke build scope:
 - targets a local packaged app smoke run first
 - keeps the same staged `process.resourcesPath/kiraclaw` layout so daemon startup can be checked before release signing work
 
-Current bridge assumption:
+Current bridge runtime behavior:
 
-- `uv` is available on the host machine, as it was in the KIRA-Slack line
+- packaged bridge builds try to auto-install `uv` on the target machine if it is missing
+- dev mode still expects the local development environment to be set up already
+
+Bridge preflight currently verifies:
+
+- local `node` and `npm`
+- bridge identity and updater config shape
+- desktop syntax checks
+- full KiraClaw test suite
+- packaged smoke bridge resource layout

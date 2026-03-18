@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Callable
 
 from slack_sdk import WebClient
@@ -142,6 +143,77 @@ class SlackAddReactionTool(_SlackToolBase):
         return self._run_with_slack_error_boundary(_send)
 
 
+class SlackUploadFileTool(_SlackToolBase):
+    name = "slack_upload_file"
+    description = (
+        "Upload a local file to Slack when a file already exists on disk and the user wants it sent "
+        "to a Slack channel, DM, or thread."
+    )
+    parameters = {
+        "channel_id": {
+            "type": "string",
+            "description": "Slack channel ID or DM ID to upload into.",
+        },
+        "file_path": {
+            "type": "string",
+            "description": "Absolute local file path to upload.",
+        },
+        "title": {
+            "type": "string",
+            "description": "Optional title shown in Slack for the uploaded file.",
+            "optional": True,
+        },
+        "initial_comment": {
+            "type": "string",
+            "description": "Optional message to post with the upload.",
+            "optional": True,
+        },
+        "thread_ts": {
+            "type": "string",
+            "description": "Optional thread timestamp to upload in-thread.",
+            "optional": True,
+        },
+    }
+
+    def run(
+        self,
+        channel_id: str,
+        file_path: str,
+        title: str | None = None,
+        initial_comment: str | None = None,
+        thread_ts: str | None = None,
+    ) -> str:
+        def _upload() -> str:
+            if not os.path.isfile(file_path):
+                return _build_result(False, error=f"file_not_found: {file_path}")
+
+            filename = os.path.basename(file_path)
+            response = self._client().files_upload_v2(
+                channel=channel_id,
+                file=file_path,
+                filename=filename,
+                title=title or filename,
+                initial_comment=initial_comment,
+                thread_ts=thread_ts,
+            )
+            file_info = {}
+            if isinstance(response, dict):
+                file_info = response.get("file") or {}
+            else:
+                file_info = response.get("file", {})
+            return _build_result(
+                True,
+                channel=channel_id,
+                file_id=file_info.get("id"),
+                title=file_info.get("title") or title or filename,
+                name=file_info.get("name") or filename,
+                permalink=file_info.get("permalink"),
+                thread_ts=thread_ts,
+            )
+
+        return self._run_with_slack_error_boundary(_upload)
+
+
 def build_slack_tools(
     settings: KiraClawSettings,
     *,
@@ -155,5 +227,6 @@ def build_slack_tools(
         SlackSendMessageTool(factory),
         SlackReplyToThreadTool(factory),
         SlackAddReactionTool(factory),
+        SlackUploadFileTool(factory),
     ]
     return tools

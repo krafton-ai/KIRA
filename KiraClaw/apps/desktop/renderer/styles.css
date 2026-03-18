@@ -352,6 +352,17 @@ select {
   -webkit-app-region: no-drag;
 }
 
+.channel-config-fields {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border: 0;
+}
+
+.channel-config-fields[disabled] {
+  opacity: 0.46;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1058,121 +1069,28 @@ button:disabled {
   gap: var(--space-3);
 }
 
-.watch-list,
-.watch-run-list,
 .remote-mcp-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 
-.watch-card,
-.watch-item {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: rgba(12, 17, 24, 0.56);
-  color: var(--text);
-  text-align: left;
-}
-
-.watch-card:hover,
-.watch-item:hover {
-  border-color: rgba(141, 176, 255, 0.24);
-  background: rgba(18, 24, 33, 0.74);
-}
-
-.watch-card.active,
-.watch-item.open,
-.watch-item[open] {
-  border-color: rgba(141, 176, 255, 0.36);
-  background: rgba(35, 46, 66, 0.78);
-}
-
-.watch-item {
-  padding: 0;
-}
-
-.watch-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  cursor: pointer;
-  list-style: none;
-}
-
-.watch-summary::-webkit-details-marker {
-  display: none;
-}
-
-.watch-summary-copy {
-  min-width: 0;
-}
-
-.watch-summary-side {
-  flex: 0 0 auto;
-}
-
-.watch-item-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: 0 var(--space-3) var(--space-3);
-}
-
-.watch-item-grid {
-  gap: 12px;
-}
-
-.watch-item-actions {
-  justify-content: flex-start;
-}
-
-.watch-inline-runs {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.watch-add-row {
-  display: flex;
-  justify-content: flex-start;
-}
-
-.watch-card-head,
-.watch-run-head {
+.schedule-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
 }
 
-.watch-card strong,
-.watch-run-item strong {
+.schedule-card-head strong {
   font-size: 12px;
 }
 
-.watch-card-meta {
+.schedule-card-meta {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
-}
-
-.watch-run-item {
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: rgba(12, 17, 24, 0.46);
-}
-
-.watch-item textarea {
-  min-height: 76px;
 }
 
 .channel-list {
@@ -1230,20 +1148,6 @@ button:disabled {
 
 .channel-card-head strong {
   font-size: 12px;
-}
-
-.channel-toggle {
-  pointer-events: none;
-}
-
-.channel-toggle .toggle-slider {
-  background-color: rgba(100, 130, 255, 0.8);
-  border-color: rgba(141, 176, 255, 0.35);
-}
-
-.channel-toggle .toggle-slider::before {
-  transform: translateX(17px);
-  background-color: #ffffff;
 }
 
 .settings-section {
@@ -1410,6 +1314,22 @@ button:disabled {
   word-break: break-word;
 }
 
+.terminal-path-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.terminal-path-link:hover {
+  color: #b9cbff;
+}
+
 .thinking-dots::after {
   content: "";
   display: inline-block;
@@ -1503,6 +1423,60 @@ button:disabled {
   margin: 0;
   color: var(--muted);
   line-height: 1.62;
+}
+
+.run-log-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.run-log-meta {
+  margin-top: var(--space-1);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.run-log-details {
+  margin-top: var(--space-2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.run-log-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.run-log-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.run-log-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+
+.run-log-value {
+  color: var(--text);
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+}
+
+.log-empty {
+  color: var(--muted);
+}
+
+.log-spoken-item + .log-spoken-item {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .suggestion-item p {

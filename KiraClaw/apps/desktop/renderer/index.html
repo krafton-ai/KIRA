@@ -40,7 +40,7 @@
                 <path d="M2 9.8h10.4"></path>
               </svg>
             </span>
-            <span>Channel</span>
+            <span>Channels</span>
           </button>
           <button class="nav-item" data-view="skills">
             <span class="nav-item-icon" aria-hidden="true">
@@ -63,14 +63,26 @@
             </span>
             <span>MCP</span>
           </button>
-          <button class="nav-item" data-view="watch">
+          <button class="nav-item" data-view="schedules">
             <span class="nav-item-icon" aria-hidden="true">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="8" cy="8" r="5.2"></circle>
-                <path d="M8 5.2v3.1l2 1.3"></path>
+                <rect x="2.5" y="3.2" width="11" height="10.3" rx="2"></rect>
+                <path d="M5 2v2.3"></path>
+                <path d="M11 2v2.3"></path>
+                <path d="M2.8 6.2h10.4"></path>
               </svg>
             </span>
-            <span>Watch</span>
+            <span>Schedules</span>
+          </button>
+          <button class="nav-item" data-view="runs">
+            <span class="nav-item-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3.5h10"></path>
+                <path d="M3 8h10"></path>
+                <path d="M3 12.5h6.5"></path>
+              </svg>
+            </span>
+            <span>Runs</span>
           </button>
           <button class="nav-item" data-view="settings">
             <span class="nav-item-icon" aria-hidden="true">
@@ -159,38 +171,11 @@
           </section>
         </section>
 
-        <section id="view-watch" class="view">
-          <header class="view-head">
-            <div>
-              <h2>Watch</h2>
-              <p class="inline-copy">Run the same KIRA Engine on a schedule with a condition and an action.</p>
-            </div>
-          </header>
-
-          <section class="settings-section">
-            <div class="card-head">
-              <h3>Watches</h3>
-              <div class="status-chip online">Scheduled</div>
-            </div>
-            <div id="watch-list" class="watch-list"></div>
-            <div class="watch-add-row">
-              <button id="add-watch-inline" class="ghost">+ Add Watch</button>
-            </div>
-          </section>
-
-          <footer class="view-foot">
-            <div id="watch-status" class="status-text">Watch runtime is ready.</div>
-            <div class="button-row">
-              <button id="reload-watches" class="ghost">Reload</button>
-            </div>
-          </footer>
-        </section>
-
         <section id="view-channel" class="view">
           <header class="view-head">
             <div>
-              <h2>Channel</h2>
-              <p class="inline-copy">Multiple channels can live here. Right now, Slack is the first and only one.</p>
+              <h2>Channels</h2>
+              <p class="inline-copy">Desktop chat, Slack, and lightweight chat channels can share the same local engine.</p>
             </div>
           </header>
 
@@ -198,18 +183,28 @@
             <section class="settings-section">
               <div class="card-head">
                 <h3>Available now</h3>
-                <div class="status-chip online">1 Active</div>
+                <div id="channel-available-count" class="status-chip online">0 Active</div>
               </div>
               <div class="channel-list">
-                <article class="channel-card active">
+                <article id="channel-card-slack" class="channel-card">
                   <div class="channel-card-head">
                     <strong>Slack</strong>
                     <label class="toggle-switch channel-toggle" aria-label="Slack enabled">
-                      <input type="checkbox" checked disabled />
+                      <input id="SLACK_ENABLED" type="checkbox" />
                       <span class="toggle-slider"></span>
                     </label>
                   </div>
                   <p class="section-copy">Desktop chat and Slack already share the same KIRA Engine.</p>
+                </article>
+                <article id="channel-card-telegram" class="channel-card">
+                  <div class="channel-card-head">
+                    <strong>Telegram</strong>
+                    <label class="toggle-switch channel-toggle" aria-label="Telegram enabled">
+                      <input id="TELEGRAM_ENABLED" type="checkbox" />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                  <p class="section-copy">Telegram can use the same local engine through a lightweight bot adapter.</p>
                 </article>
                 <article class="channel-card">
                   <div class="channel-card-head">
@@ -224,7 +219,7 @@
             <section class="settings-section">
               <h3>Slack</h3>
               <p class="section-copy">These values let Slack talk to the same local engine that desktop chat uses.</p>
-              <div class="form-grid">
+              <fieldset id="slack-channel-fields" class="form-grid channel-config-fields">
                 <label class="field full">
                   <span>Slack Bot Token</span>
                   <input id="SLACK_BOT_TOKEN" type="password" placeholder="xoxb-..." data-secret="true" />
@@ -245,12 +240,27 @@
                   <span>Allowed Names</span>
                   <input id="SLACK_ALLOWED_NAMES" placeholder="Jiho, 전지호" />
                 </label>
-              </div>
+              </fieldset>
+            </section>
+
+            <section class="settings-section">
+              <h3>Telegram</h3>
+              <p class="section-copy">Telegram uses a simple bot token and currently works best for direct chats with the same local engine.</p>
+              <fieldset id="telegram-channel-fields" class="form-grid channel-config-fields">
+                <label class="field full">
+                  <span>Telegram Bot Token</span>
+                  <input id="TELEGRAM_BOT_TOKEN" type="password" placeholder="123456:ABC..." data-secret="true" />
+                </label>
+                <label class="field full">
+                  <span>Allowed Names</span>
+                  <input id="TELEGRAM_ALLOWED_NAMES" placeholder="@jiho, 전지호" />
+                </label>
+              </fieldset>
             </section>
           </div>
 
           <footer class="view-foot">
-            <div id="channel-status" class="status-text">Slack settings are read from `~/.kira/config.env`.</div>
+            <div id="channel-status" class="status-text">Channel settings are read from `~/.kira/config.env`.</div>
             <div class="button-row">
               <button id="reload-channel-config" class="ghost">Reload</button>
               <button id="save-channel-settings" class="primary">Save Channel</button>
@@ -436,6 +446,30 @@
           </footer>
         </section>
 
+        <section id="view-schedules" class="view">
+          <header class="view-head">
+            <div>
+              <h2>Schedules</h2>
+              <p class="inline-copy">View the registered scheduler jobs stored in the current workspace.</p>
+            </div>
+          </header>
+
+          <section class="settings-section">
+            <div class="card-head">
+              <h3>Registered schedules</h3>
+              <div class="status-chip online">Read Only</div>
+            </div>
+            <div id="schedule-list" class="simple-list"></div>
+          </section>
+
+          <footer class="view-foot">
+            <div id="schedule-status" class="status-text">Loading schedules...</div>
+            <div class="button-row">
+              <button id="reload-schedules" class="ghost">Reload</button>
+            </div>
+          </footer>
+        </section>
+
         <section id="view-skills" class="view">
           <header class="view-head">
             <div>
@@ -463,6 +497,31 @@
           </footer>
         </section>
 
+        <section id="view-runs" class="view">
+          <header class="view-head">
+            <div>
+              <h2>Runs</h2>
+              <p class="inline-copy">Inspect recent internal summaries, spoken replies, tool usage, and silent runs.</p>
+            </div>
+          </header>
+
+          <section class="settings-section">
+            <div class="card-head">
+              <h3>Recent run logs</h3>
+              <div class="status-chip online">Read Only</div>
+            </div>
+            <div id="run-log-list" class="simple-list"></div>
+          </section>
+
+          <footer class="view-foot">
+            <div id="run-log-status" class="status-text">Loading recent runs...</div>
+            <div class="button-row">
+              <button id="open-run-log-file" class="ghost">Open Log File</button>
+              <button id="reload-run-logs" class="ghost">Reload</button>
+            </div>
+          </footer>
+        </section>
+
         <section id="view-settings" class="view">
           <header class="view-head">
             <div>
@@ -482,6 +541,14 @@
                 <label class="field full">
                   <span>Agent Name</span>
                   <input id="KIRACLAW_AGENT_NAME" placeholder="KIRA" />
+                </label>
+                <label class="field full">
+                  <span>Persona</span>
+                  <textarea
+                    id="KIRACLAW_AGENT_PERSONA"
+                    rows="5"
+                    placeholder="Calm, concise, pragmatic. Prefer action over explanation. Speak only when useful in group spaces."
+                  ></textarea>
                 </label>
               </div>
             </section>

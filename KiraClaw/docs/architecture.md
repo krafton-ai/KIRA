@@ -20,9 +20,9 @@ Add one thin layer at a time:
 1. `krim-sdk` stays the agent engine.
 2. `agentd` becomes the local daemon and product boundary.
 3. `desktop` becomes the packaged shell.
-4. Slack arrives first as the only chat channel.
-5. Desktop direct chat can arrive on the same daemon boundary later.
-6. Memory, schedules, and watch systems arrive later as explicit modules.
+4. Slack arrives first and Telegram follows as a lightweight second chat channel.
+5. Desktop direct chat lives on the same daemon boundary.
+6. Memory and schedules stay explicit modules instead of becoming hidden product magic.
 
 ## OpenClaw Alignment
 
@@ -36,6 +36,19 @@ The target shape is:
 
 That keeps KiraClaw close to OpenClaw conceptually while still preserving the desktop product expectation from KIRA-Slack.
 
+## Agentic Execution Model
+
+KiraClaw now treats the core engine as a thinking system, not as a direct reply printer.
+
+- adapters are external ears and mouth
+- the core agent thinks and chooses tools
+- `speak` is the explicit act of talking back to the outside world
+- `internal_summary` is the internal run summary kept for history and diagnostics
+- the current API still exposes the same value as `final_response` for compatibility
+- shared-room inputs are treated as room transcripts, not as guaranteed direct requests
+
+This matters because group chat and automations should be allowed to run without always producing a visible reply.
+
 ## What We Keep From KRIM
 
 - single-agent loop
@@ -43,6 +56,7 @@ That keeps KiraClaw close to OpenClaw conceptually while still preserving the de
 - model abstraction
 - tool abstraction
 - event-handler based output
+- progressive skill loading
 
 Keep:
 
@@ -83,7 +97,8 @@ Responsibility:
 - run prompts
 - execute tools
 - stream model output
-- return final response
+- produce an internal run summary
+- produce outward speech only when `speak` is used
 
 ### Layer 2: Agent Daemon
 
@@ -97,6 +112,12 @@ Responsibility:
 - become the stable boundary for Slack and desktop
 
 This is effectively the KiraClaw gateway.
+
+The daemon also owns run-level observability:
+
+- persistent run logs under `Filesystem Base Dir/logs/runs.jsonl`
+- recent run log retrieval through `GET /v1/run-logs`
+- separate visibility for prompt, internal summary, spoken reply, tool events, and silent runs
 
 ### Layer 3: Desktop
 
@@ -119,19 +140,55 @@ Responsibility:
 
 - receive user requests
 - create or resume agent jobs
-- publish progress and final answers
+- build room transcripts for shared spaces
+- publish only spoken outward replies when appropriate
 
 Slack is the first supported channel.
 
-### Layer 5: Desktop Direct Chat
+### Layer 5: Telegram Adapter
+
+Responsibility:
+
+- receive Telegram DM and group messages
+- reuse the same session and engine boundary as Slack
+- support the same `speak` and file-return model
+
+Telegram is intentionally lightweight and shares the same agent core.
+
+### Layer 6: Desktop Direct Chat
 
 Responsibility:
 
 - provide a local direct-chat surface
 - reuse the same daemon session API as Slack
-- avoid creating a second agent architecture
+- expose both internal summaries and spoken replies for debugging and QA
 
 This is explicitly secondary to Slack in the first phase.
+
+### Layer 7: Memory
+
+Responsibility:
+
+- implicit retrieval and save for normal chat flows
+- explicit memory tools for agent-directed memory work
+- structured memory index management
+
+Memory is split between deterministic index management and agent-directed file work so the agent can stay flexible without corrupting the substrate.
+The intended explicit flow is:
+
+- `memory_index_search`
+- read or edit the actual memory files
+- `memory_index_save`
+
+### Layer 8: Scheduler
+
+Responsibility:
+
+- act as the current automation runner
+- trigger agent runs on time
+- optionally deliver outward results through channel delivery when the run actually uses `speak`
+
+KiraClaw currently uses schedules rather than a separate watch subsystem.
 
 ## Resource Policy
 
@@ -147,6 +204,9 @@ That means:
 This is intentionally different from KIRA-Slack's multi-agent orchestration.
 It is intentionally closer to an OpenClaw-style embedded loop than to a many-agent classifier graph.
 
+It also means KiraClaw avoids a mandatory classifier or bot-call detector in front of every shared-room message.
+The current design prefers agent judgment plus `speak` over a large pre-routing layer.
+
 ## Long-Running Task Policy
 
 The default assumption is that KiraClaw should be able to stay on a task for a long time.
@@ -159,18 +219,6 @@ Initial implications:
 - future support for supervised loop jobs on top of `krim-sdk.Agent`
 - per-session serialized execution
 
-## Watch Layer
-
-KIRA-Slack proved that recurring observation and proactive work matter.
-KiraClaw keeps that value, but in a simpler `watch` shape:
-
-1. a watch has time, condition, and action
-2. scheduler decides when the watch runs
-3. the same KRIM-based agent loop evaluates the watch
-4. the watch can no-op, write memory, send a message, or perform tool-driven work
-
-This avoids rebuilding a separate checker/proactive graph before the product boundary is stable.
-
 ## What We Are Not Building Yet
 
 - Jira/Confluence/Outlook producers inside the daemon
@@ -178,9 +226,8 @@ This avoids rebuilding a separate checker/proactive graph before the product bou
 - confirm DB workflow
 - memory graph
 - account migration logic inside the daemon
-- full desktop direct-chat UX
-
-These come only after the small watch substrate is stable.
+- multi-agent routing nodes
+- a separate background watcher runtime
 
 ## Initial API Contract
 
@@ -188,10 +235,9 @@ The daemon starts with a very small API:
 
 - `GET /health`
 - `GET /v1/runtime`
-- `GET /v1/watches`
-- `GET /v1/watch-runs`
-- `POST /v1/watches`
-- `POST /v1/watches/{watch_id}/run`
+- `GET /v1/run-logs`
+- `GET /v1/schedules`
+- `GET /v1/skills`
 - `POST /v1/runs`
 
 That is enough to validate:

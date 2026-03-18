@@ -27,7 +27,7 @@ export function renderSkillsState(state) {
     list.innerHTML = `
       <article class="skill-card skill-card-empty">
         <strong>No skills found</strong>
-        <p class="section-copy">Put skill folders under the workspace or global skills directory.</p>
+        <p class="section-copy">Put skill folders under the workspace skills directory.</p>
       </article>
     `;
     setText(byId("skills-status"), "No skills are currently available.");

@@ -13,6 +13,13 @@ def _payload(result: dict) -> dict:
 
 def test_scheduler_tools_crud_roundtrip(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("KIRACLAW_SCHEDULE_FILE", str(tmp_path / "schedules.json"))
+    reload_calls: list[bool] = []
+
+    async def fake_reload() -> tuple[bool, str | None]:
+        reload_calls.append(True)
+        return True, None
+
+    monkeypatch.setattr("kiraclaw_agentd.scheduler_mcp_tools._notify_scheduler_reload", fake_reload)
 
     async def scenario() -> None:
         created = _payload(
@@ -28,19 +35,82 @@ def test_scheduler_tools_crud_roundtrip(tmp_path, monkeypatch) -> None:
             )
         )
         assert created["success"] is True
+        assert created["reload_notified"] is True
         schedule_id = created["schedule_id"]
 
         listed = _payload(list_schedules({}))
         assert listed["success"] is True
         assert listed["schedules"][0]["id"] == schedule_id
+        assert listed["schedules"][0]["channel_type"] == "slack"
+        assert listed["schedules"][0]["channel_target"] == "C123"
 
         updated = _payload(await update_schedule({"schedule_id": schedule_id, "name": "Updated report"}))
         assert updated["success"] is True
+        assert updated["reload_notified"] is True
 
         removed = _payload(await remove_schedule({"schedule_id": schedule_id}))
         assert removed["success"] is True
+        assert removed["reload_notified"] is True
 
         after_remove = _payload(list_schedules({}))
         assert after_remove["schedules"] == []
+        assert len(reload_calls) == 3
+
+    asyncio.run(scenario())
+
+
+def test_scheduler_tools_accept_telegram_channel_type(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIRACLAW_SCHEDULE_FILE", str(tmp_path / "schedules.json"))
+    monkeypatch.setattr("kiraclaw_agentd.scheduler_mcp_tools._notify_scheduler_reload", lambda: asyncio.sleep(0, result=(True, None)))
+
+    async def scenario() -> None:
+        created = _payload(
+            await add_schedule(
+                {
+                    "name": "Telegram report",
+                    "schedule_type": "date",
+                    "schedule_value": (datetime.now(timezone.utc) + timedelta(minutes=5)).replace(microsecond=0).isoformat(),
+                    "user_id": "U123",
+                    "text": "Send the Telegram report",
+                    "channel_type": "telegram",
+                    "channel_target": "123456",
+                }
+            )
+        )
+        assert created["success"] is True
+
+        listed = _payload(list_schedules({"channel_target": "123456"}))
+        assert listed["success"] is True
+        assert listed["schedules"][0]["channel_type"] == "telegram"
+        assert listed["schedules"][0]["channel_target"] == "123456"
+        assert created["reload_notified"] is True
+
+    asyncio.run(scenario())
+
+
+def test_scheduler_tools_return_warning_when_reload_notification_fails(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIRACLAW_SCHEDULE_FILE", str(tmp_path / "schedules.json"))
+
+    async def fake_reload() -> tuple[bool, str | None]:
+        return False, "connection refused"
+
+    monkeypatch.setattr("kiraclaw_agentd.scheduler_mcp_tools._notify_scheduler_reload", fake_reload)
+
+    async def scenario() -> None:
+        created = _payload(
+            await add_schedule(
+                {
+                    "name": "Delayed report",
+                    "schedule_type": "date",
+                    "schedule_value": (datetime.now(timezone.utc) + timedelta(minutes=5)).replace(microsecond=0).isoformat(),
+                    "user_id": "U123",
+                    "text": "Send later",
+                    "channel_id": "C123",
+                }
+            )
+        )
+        assert created["success"] is True
+        assert created["reload_notified"] is False
+        assert "reload pending" in created["message"]
 
     asyncio.run(scenario())

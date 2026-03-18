@@ -5,6 +5,8 @@ import contextlib
 import logging
 
 from kiraclaw_agentd.memory_models import MemoryWriteRequest
+from kiraclaw_agentd.memory_retriever import MemoryRetriever
+from kiraclaw_agentd.memory_saver import MemorySaver
 from kiraclaw_agentd.memory_store import MemoryStore
 from kiraclaw_agentd.settings import KiraClawSettings
 
@@ -15,6 +17,8 @@ class MemoryRuntime:
     def __init__(self, settings: KiraClawSettings) -> None:
         self.settings = settings
         self.store = MemoryStore(settings.memory_dir, settings.memory_index_file, settings.agent_name)
+        self.retriever = MemoryRetriever(self.store)
+        self.saver = MemorySaver(self.store)
         self.queue: asyncio.Queue[MemoryWriteRequest] = asyncio.Queue(maxsize=200)
         self.worker_task: asyncio.Task[None] | None = None
         self.state: str = "disabled" if not settings.memory_enabled else "stopped"
@@ -52,7 +56,7 @@ class MemoryRuntime:
         if not self.settings.memory_enabled:
             return None
         try:
-            return self.store.retrieve_context(prompt, session_id, metadata)
+            return self.retriever.build_context(prompt, session_id, metadata)
         except Exception as exc:
             self.last_error = str(exc)
             logger.warning("Memory retrieval failed: %s", exc)
@@ -68,7 +72,7 @@ class MemoryRuntime:
             while True:
                 request = await self.queue.get()
                 try:
-                    self.store.save_exchange(request)
+                    self.saver.save(request)
                     self.last_error = None
                 except Exception as exc:
                     self.last_error = str(exc)

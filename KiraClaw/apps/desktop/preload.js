@@ -64,32 +64,16 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   getSkills() {
     return request("/v1/skills");
   },
-  getWatches() {
-    return request("/v1/watches");
+  getSchedules() {
+    return request("/v1/schedules");
   },
-  getWatchRuns(limit = 50, watchId = "") {
+  getRunLogs(limit = 50, sessionId = "") {
     const query = new URLSearchParams();
     query.set("limit", String(limit));
-    if (watchId) {
-      query.set("watch_id", watchId);
+    if (sessionId) {
+      query.set("session_id", sessionId);
     }
-    return request(`/v1/watch-runs?${query.toString()}`);
-  },
-  saveWatch(payload) {
-    return request("/v1/watches", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-  deleteWatch(watchId) {
-    return request(`/v1/watches/${encodeURIComponent(watchId)}`, {
-      method: "DELETE",
-    });
-  },
-  runWatchNow(watchId) {
-    return request(`/v1/watches/${encodeURIComponent(watchId)}/run`, {
-      method: "POST",
-    });
+    return request(`/v1/run-logs?${query.toString()}`);
   },
   runPrompt(payload) {
     return request("/v1/runs", {

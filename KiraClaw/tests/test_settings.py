@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from kiraclaw_agentd.settings import get_settings
+from kiraclaw_agentd.settings import KiraClawSettings, get_settings
 
 
 def _write_legacy_state(home: Path, workspace: Path) -> None:
@@ -12,13 +12,18 @@ def _write_legacy_state(home: Path, workspace: Path) -> None:
     (legacy_dir / "config.env").write_text(
         "\n".join(
             [
+                'SLACK_ENABLED="false"',
                 'SLACK_BOT_TOKEN="legacy-bot-token"',
                 'SLACK_APP_TOKEN="legacy-app-token"',
                 'SLACK_SIGNING_SECRET="legacy-signing-secret"',
                 'SLACK_TEAM_ID="legacy-team"',
+                'TELEGRAM_ENABLED="true"',
+                'TELEGRAM_BOT_TOKEN="legacy-telegram-token"',
+                'TELEGRAM_ALLOWED_NAMES="jiho, 전지호"',
                 'BOT_AUTHORIZED_USERS_EN="Jiho Jeon, Kris Choi"',
                 'BOT_AUTHORIZED_USERS_KR="전지호"',
                 'BOT_NAME="KIRA"',
+                'KIRACLAW_AGENT_PERSONA="Calm and direct.\\nPrefer action over explanation."',
                 'OPENAI_API_KEY="legacy-openai-key"',
                 'PERPLEXITY_ENABLED="true"',
                 'PERPLEXITY_API_KEY="legacy-perplexity-key"',
@@ -71,6 +76,7 @@ def test_auto_mode_prefers_legacy_kira_home(tmp_path, monkeypatch) -> None:
     assert settings.provider == "vertex_ai"
     assert settings.model == "claude-opus-4-6"
     assert settings.agent_name == "KIRA"
+    assert settings.agent_persona == "Calm and direct.\nPrefer action over explanation."
     assert settings.skills_enabled is True
     assert settings.mcp_enabled is True
     assert settings.mcp_time_enabled is True
@@ -100,17 +106,20 @@ def test_auto_mode_prefers_legacy_kira_home(tmp_path, monkeypatch) -> None:
     assert settings.browser_enabled is True
     assert settings.browser_profile_dir == workspace / "chrome_profile"
     assert settings.browser_output_dir == workspace / "files"
+    assert settings.slack_enabled is False
     assert settings.slack_bot_token == "legacy-bot-token"
     assert settings.slack_allowed_names == "Jiho Jeon, Kris Choi, 전지호"
+    assert settings.telegram_enabled is True
+    assert settings.telegram_bot_token == "legacy-telegram-token"
+    assert settings.telegram_allowed_names == "jiho, 전지호"
     assert settings.legacy_config_loaded is True
     assert settings.active_config_file == home / ".kira" / "config.env"
     assert settings.credential_file == home / ".kira" / "credential.json"
     assert settings.schedule_file == workspace / "schedule_data" / "schedules.json"
-    assert settings.watch_dir == workspace / "watch_data"
-    assert settings.watch_file == workspace / "watch_data" / "watches.json"
-    assert settings.watch_state_file == workspace / "watch_data" / "state.json"
     assert settings.memory_dir == workspace / "memories"
     assert settings.memory_index_file == workspace / "memories" / "index.json"
+    assert settings.run_log_dir == workspace / "logs"
+    assert settings.run_log_file == workspace / "logs" / "runs.jsonl"
     assert os.environ["OPENAI_API_KEY"] == "legacy-openai-key"
 
 
@@ -134,10 +143,15 @@ def test_explicit_modern_home_keeps_openai_provider(tmp_path, monkeypatch) -> No
     assert settings.active_home_mode == "modern"
     assert settings.data_dir == home / ".kiraclaw"
     assert settings.workspace_dir == home / ".kiraclaw" / "workspaces" / "default"
+    assert settings.max_turns == 100
     assert settings.provider == "openai"
     assert settings.model is None
     assert settings.agent_name == "KIRA"
+    assert settings.agent_persona == ""
     assert settings.slack_allowed_names == ""
+    assert settings.telegram_enabled is False
+    assert settings.telegram_bot_token == ""
+    assert settings.telegram_allowed_names == ""
     assert settings.skills_enabled is True
     assert settings.mcp_enabled is True
     assert settings.mcp_time_enabled is True
@@ -151,8 +165,33 @@ def test_explicit_modern_home_keeps_openai_provider(tmp_path, monkeypatch) -> No
     assert settings.browser_output_dir == home / ".kiraclaw" / "workspaces" / "default" / "files"
     assert settings.legacy_config_loaded is False
     assert settings.schedule_file == home / ".kiraclaw" / "workspaces" / "default" / "schedule_data" / "schedules.json"
-    assert settings.watch_dir == home / ".kiraclaw" / "workspaces" / "default" / "watch_data"
-    assert settings.watch_file == home / ".kiraclaw" / "workspaces" / "default" / "watch_data" / "watches.json"
-    assert settings.watch_state_file == home / ".kiraclaw" / "workspaces" / "default" / "watch_data" / "state.json"
     assert settings.memory_dir == home / ".kiraclaw" / "workspaces" / "default" / "memories"
     assert settings.memory_index_file == home / ".kiraclaw" / "workspaces" / "default" / "memories" / "index.json"
+    assert settings.run_log_dir == home / ".kiraclaw" / "workspaces" / "default" / "logs"
+    assert settings.run_log_file == home / ".kiraclaw" / "workspaces" / "default" / "logs" / "runs.jsonl"
+
+
+def test_ensure_directories_seeds_default_skills_without_overwriting(tmp_path) -> None:
+    seed_dir = tmp_path / "seed-skills"
+    (seed_dir / "pptx").mkdir(parents=True)
+    (seed_dir / "pptx" / "SKILL.md").write_text("# pptx\n", encoding="utf-8")
+    (seed_dir / "pdf").mkdir(parents=True)
+    (seed_dir / "pdf" / "SKILL.md").write_text("# pdf\n", encoding="utf-8")
+
+    workspace_dir = tmp_path / "workspace"
+    kira_settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=workspace_dir,
+        home_mode="modern",
+        slack_enabled=False,
+        default_skills_dir=seed_dir,
+    )
+    kira_settings.ensure_directories()
+
+    assert (workspace_dir / "skills" / "pptx" / "SKILL.md").exists()
+    assert (workspace_dir / "skills" / "pdf" / "SKILL.md").exists()
+
+    (workspace_dir / "skills" / "pptx" / "SKILL.md").write_text("# customized\n", encoding="utf-8")
+    kira_settings.ensure_directories()
+
+    assert (workspace_dir / "skills" / "pptx" / "SKILL.md").read_text(encoding="utf-8") == "# customized\n"

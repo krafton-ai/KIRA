@@ -1,14 +1,16 @@
 import asyncio
+import logging
 
 from kiraclaw_agentd.engine import RunResult
 from kiraclaw_agentd.slack_adapter import (
     SlackGateway,
+    _build_delivery_context_prefix,
     _clean_prompt_text,
     _is_authorized_user_name,
+    _is_human_message_event,
     _parse_allowed_names,
     _reply_thread_ts_from_event,
     _session_id_from_event,
-    _should_handle_message,
 )
 from kiraclaw_agentd.session_manager import RunRecord
 from kiraclaw_agentd.settings import KiraClawSettings
@@ -16,18 +18,19 @@ from kiraclaw_agentd.settings import KiraClawSettings
 
 def test_clean_prompt_text_strips_app_mentions_and_normalizes_whitespace() -> None:
     text = "  <@U123ABC>   please   summarize   this thread  "
-    assert _clean_prompt_text(text, mention=True) == "please summarize this thread"
+    assert _clean_prompt_text(text, mention=True, agent_name="세나") == "세나 please summarize this thread"
 
 
 def test_clean_prompt_text_keeps_dm_text_intact() -> None:
     assert _clean_prompt_text("  hello   from   dm  ", mention=False) == "hello from dm"
 
 
-def test_should_handle_message_only_accepts_human_dms() -> None:
-    assert _should_handle_message({"channel_type": "im"}) is True
-    assert _should_handle_message({"channel_type": "channel"}) is False
-    assert _should_handle_message({"channel_type": "im", "subtype": "message_changed"}) is False
-    assert _should_handle_message({"channel_type": "im", "bot_id": "B123"}) is False
+def test_is_human_message_event_only_accepts_human_messages() -> None:
+    assert _is_human_message_event({"channel_type": "im", "user": "U1"}) is True
+    assert _is_human_message_event({"channel_type": "channel", "user": "U1", "text": "hello"}) is True
+    assert _is_human_message_event({"channel_type": "im", "subtype": "message_changed", "user": "U1"}) is False
+    assert _is_human_message_event({"channel_type": "im", "bot_id": "B123", "user": "U1"}) is False
+    assert _is_human_message_event({"channel_type": "im"}) is False
 
 
 def test_dm_messages_use_channel_session_and_main_channel_reply() -> None:
@@ -38,7 +41,7 @@ def test_dm_messages_use_channel_session_and_main_channel_reply() -> None:
 
 def test_channel_messages_reply_in_thread() -> None:
     event = {"channel": "C123", "channel_type": "channel", "ts": "111.222"}
-    assert _session_id_from_event(event) == "slack:C123:111.222"
+    assert _session_id_from_event(event) == "slack:C123:main"
     assert _reply_thread_ts_from_event(event) == "111.222"
 
 
@@ -51,6 +54,12 @@ def test_authorized_user_name_uses_case_insensitive_substring_match() -> None:
     assert _is_authorized_user_name("전지호", "Jiho, 전지호") is True
     assert _is_authorized_user_name("Someone Else", "Jiho, 전지호") is False
     assert _is_authorized_user_name("Anyone", "") is True
+
+
+def test_build_delivery_context_prefix_includes_channel_and_thread_when_present() -> None:
+    context = _build_delivery_context_prefix("C123", "111.222")
+    assert "channel_id: C123" in context
+    assert "thread_ts: 111.222" in context
 
 
 class _FakeSlackClient:
@@ -103,7 +112,7 @@ class _FakeSessionManager:
             prompt=kwargs["prompt"],
             created_at="2026-01-01T00:00:00Z",
             finished_at="2026-01-01T00:00:01Z",
-            result=RunResult(final_response="ok", streamed_text="ok"),
+            result=RunResult(final_response="internal ok", streamed_text="ok", spoken_messages=["ok"]),
             metadata=kwargs.get("metadata", {}),
         )
 
@@ -148,7 +157,7 @@ def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_pat
         gateway.identity = {"user_id": "UBOT"}
         client = _FakeSlackClient()
 
-        async def fake_bootstrap_context(*, client, event):
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
             return "Slack bootstrap"
 
         gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
@@ -165,7 +174,8 @@ def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_pat
             mention=False,
             client=client,
         )
-        assert session_manager.calls[0]["context_prefix"] == "Slack bootstrap"
+        assert "channel_id: D1" in session_manager.calls[0]["context_prefix"]
+        assert "Slack bootstrap" in session_manager.calls[0]["context_prefix"]
 
         session_manager.records = [
             RunRecord(
@@ -189,7 +199,8 @@ def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_pat
             mention=False,
             client=client,
         )
-        assert session_manager.calls[1]["context_prefix"] is None
+        assert "channel_id: D1" in session_manager.calls[1]["context_prefix"]
+        assert "Slack bootstrap" not in session_manager.calls[1]["context_prefix"]
 
     asyncio.run(scenario())
 
@@ -215,5 +226,269 @@ def test_build_slack_bootstrap_context_for_thread_excludes_current_message(tmp_p
         assert "Jiho Jeon: thread start" in context
         assert "KIRA: thread answer" in context
         assert "current question" not in context
+
+    asyncio.run(scenario())
+
+
+def test_slack_messages_from_same_user_are_debounced_and_merged(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = SlackGateway(session_manager, settings, debounce_seconds=0.05)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return None
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event1 = {"channel": "D1", "channel_type": "im", "ts": "101.0", "user": "U1", "text": "first"}
+        event2 = {"channel": "D1", "channel_type": "im", "ts": "102.0", "user": "U1", "text": "second"}
+
+        await gateway._schedule_event(event1, client, logging.getLogger("test-slack"), mention=False)
+        await gateway._schedule_event(event2, client, logging.getLogger("test-slack"), mention=False)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        assert session_manager.calls[0]["prompt"] == "first\nsecond"
+        assert client.sent_messages == [{"channel": "D1", "text": "ok", "thread_ts": None}]
+
+    asyncio.run(scenario())
+
+
+def test_slack_group_messages_are_handled_as_room_transcript_without_direct_call_gate(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+            agent_name="세나",
+        )
+        class _SilentGroupSessionManager(_FakeSessionManager):
+            async def run(self, **kwargs) -> RunRecord:
+                self.calls.append(kwargs)
+                return RunRecord(
+                    run_id="run-1",
+                    session_id=kwargs["session_id"],
+                    state="completed",
+                    prompt=kwargs["prompt"],
+                    created_at="2026-01-01T00:00:00Z",
+                    finished_at="2026-01-01T00:00:01Z",
+                    result=RunResult(final_response="internal only", streamed_text=""),
+                    metadata=kwargs.get("metadata", {}),
+                )
+
+        session_manager = _SilentGroupSessionManager()
+        gateway = SlackGateway(session_manager, settings, debounce_seconds=0.05)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return None
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event = {
+            "channel": "C1",
+            "channel_type": "channel",
+            "ts": "101.0",
+            "user": "U1",
+            "text": "상태 알려줘",
+        }
+
+        await gateway._schedule_event(event, client, logging.getLogger("test-slack"), mention=False)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        assert session_manager.calls[0]["prompt"] == "Recent room messages:\n- Jiho Jeon: 상태 알려줘"
+        assert client.sent_messages == []
+
+    asyncio.run(scenario())
+
+
+def test_slack_group_messages_share_one_room_debounce_window(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+            agent_name="세나",
+        )
+        class _SilentGroupSessionManager(_FakeSessionManager):
+            async def run(self, **kwargs) -> RunRecord:
+                self.calls.append(kwargs)
+                return RunRecord(
+                    run_id="run-1",
+                    session_id=kwargs["session_id"],
+                    state="completed",
+                    prompt=kwargs["prompt"],
+                    created_at="2026-01-01T00:00:00Z",
+                    finished_at="2026-01-01T00:00:01Z",
+                    result=RunResult(final_response="internal only", streamed_text=""),
+                    metadata=kwargs.get("metadata", {}),
+                )
+
+        session_manager = _SilentGroupSessionManager()
+        gateway = SlackGateway(session_manager, settings, debounce_seconds=0.05)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return None
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event1 = {"channel": "C1", "channel_type": "channel", "ts": "101.0", "user": "U1", "text": "첫번째"}
+        event2 = {"channel": "C1", "channel_type": "channel", "ts": "102.0", "user": "U2", "text": "두번째"}
+
+        await gateway._schedule_event(event1, client, logging.getLogger("test-slack"), mention=False)
+        await gateway._schedule_event(event2, client, logging.getLogger("test-slack"), mention=False)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        assert session_manager.calls[0]["prompt"] == (
+            "Recent room messages:\n"
+            "- Jiho Jeon: 첫번째\n"
+            "- Alice: 두번째"
+        )
+        assert client.sent_messages == []
+
+    asyncio.run(scenario())
+
+
+def test_slack_publish_result_prefers_spoken_messages(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        client = _FakeSlackClient()
+        record = RunRecord(
+            run_id="run-1",
+            session_id="slack:C1:main",
+            state="completed",
+            prompt="hello",
+            created_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T00:00:01Z",
+            result=RunResult(
+                final_response="internal summary",
+                streamed_text="",
+                spoken_messages=["첫번째 말", "두번째 말"],
+            ),
+        )
+
+        await gateway._publish_result(client, "C1", "111.222", record)
+
+        assert client.sent_messages == [
+            {"channel": "C1", "text": "첫번째 말", "thread_ts": "111.222"},
+            {"channel": "C1", "text": "두번째 말", "thread_ts": "111.222"},
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_slack_publish_result_appends_tool_summary_to_last_spoken_message(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        client = _FakeSlackClient()
+        record = RunRecord(
+            run_id="run-1",
+            session_id="slack:C1:main",
+            state="completed",
+            prompt="hello",
+            created_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T00:00:01Z",
+            result=RunResult(
+                final_response="internal summary",
+                streamed_text="",
+                tool_events=[
+                    {"phase": "start", "name": "read", "args": {}},
+                    {"phase": "end", "name": "read", "result": "ok"},
+                    {"phase": "start", "name": "bash", "args": {}},
+                    {"phase": "end", "name": "bash", "result": "ok"},
+                ],
+                spoken_messages=["첫번째 말", "두번째 말"],
+            ),
+        )
+
+        await gateway._publish_result(client, "C1", "111.222", record)
+
+        assert client.sent_messages == [
+            {"channel": "C1", "text": "첫번째 말", "thread_ts": "111.222"},
+            {"channel": "C1", "text": "두번째 말\n\nUsed: read, bash", "thread_ts": "111.222"},
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_slack_group_publish_is_silent_without_speak(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        client = _FakeSlackClient()
+        record = RunRecord(
+            run_id="run-1",
+            session_id="slack:C1:main",
+            state="completed",
+            prompt="hello",
+            created_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T00:00:01Z",
+            result=RunResult(final_response="internal summary", streamed_text=""),
+            metadata={"source": "slack-group"},
+        )
+
+        await gateway._publish_result(client, "C1", "111.222", record)
+
+        assert client.sent_messages == []
+
+    asyncio.run(scenario())
+
+
+def test_slack_dm_publish_is_silent_without_speak(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        client = _FakeSlackClient()
+        record = RunRecord(
+            run_id="run-1",
+            session_id="slack:dm:D1",
+            state="completed",
+            prompt="hello",
+            created_at="2026-01-01T00:00:00Z",
+            finished_at="2026-01-01T00:00:01Z",
+            result=RunResult(final_response="internal summary", streamed_text=""),
+            metadata={"source": "slack-dm"},
+        )
+
+        await gateway._publish_result(client, "D1", None, record)
+
+        assert client.sent_messages == []
 
     asyncio.run(scenario())

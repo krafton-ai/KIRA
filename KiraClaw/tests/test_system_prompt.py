@@ -23,11 +23,23 @@ def test_system_prompt_mentions_skill_only_when_available() -> None:
     prompt = build_system_prompt(
         "KIRA",
         ["bash", "read", "write", "edit", "grep", "glob", "submit", "skill"],
-        ["jira-reader"],
+        [
+            {
+                "id": "jira-reader",
+                "name": "jira-reader",
+                "description": "Read Jira carefully",
+                "path": "/workspace/skills/jira-reader",
+                "source": "workspace",
+            }
+        ],
     )
 
     assert "You have tools: read, write, edit, bash, grep, glob, skill, submit." in prompt
-    assert "Available skills can be loaded on demand with the skill tool: jira-reader" in prompt
+    assert "Available skills are installed as SKILL.md packages under the workspace skills directory." in prompt
+    assert "If you create or install a new skill, place it under Filesystem Base Dir/skills/<skill-name>/SKILL.md." in prompt
+    assert "When a skill is relevant, call the skill tool with the listed skill name to load its full instructions before following it." in prompt
+    assert "Use read only for extra files or resources referenced by the loaded skill instructions." in prompt
+    assert "- jira-reader: Read Jira carefully (skill directory: /workspace/skills/jira-reader)" in prompt
 
 
 def test_system_prompt_mentions_mcp_tools_when_available() -> None:
@@ -39,6 +51,53 @@ def test_system_prompt_mentions_mcp_tools_when_available() -> None:
     )
 
     assert "Additional tools available: mcp__time__get_current_time" in prompt
+
+
+def test_system_prompt_mentions_speak_guidance_when_available() -> None:
+    prompt = build_system_prompt(
+        "세나",
+        ["bash", "read", "write", "edit", "grep", "glob", "speak", "submit"],
+    )
+
+    assert "Use speak only for words that should actually be delivered to the current conversation." in prompt
+    assert "Any normal text you return without using speak becomes internal summary only." in prompt
+    assert "Keep your internal summary concise, action-oriented" in prompt
+    assert "scheduled or background runs, think and act first" in prompt
+    assert "speak only if someone explicitly addresses you as 세나" in prompt
+
+
+def test_system_prompt_mentions_memory_index_first_flow_when_available() -> None:
+    prompt = build_system_prompt(
+        "세나",
+        [
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "grep",
+            "glob",
+            "memory_search",
+            "memory_save",
+            "memory_index_search",
+            "memory_index_save",
+            "submit",
+        ],
+    )
+
+    assert "default to this flow: memory_index_search -> read or edit the actual memory files -> memory_index_save" in prompt
+    assert "do not rewrite index.json with normal file tools" in prompt
+
+
+def test_system_prompt_includes_persona_guidance_when_present() -> None:
+    prompt = build_system_prompt(
+        "세나",
+        ["bash", "read", "write", "edit", "grep", "glob", "submit"],
+        agent_persona="Be calm and concise.\nPrefer action over explanation.",
+    )
+
+    assert "Persona guidance for how you should generally carry yourself while thinking, speaking, and acting:" in prompt
+    assert "Be calm and concise." in prompt
+    assert "Prefer action over explanation." in prompt
 
 
 def test_system_prompt_falls_back_to_default_name_when_blank() -> None:

@@ -18,6 +18,7 @@ class FakeEngine:
         model: str | None = None,
         conversation_context: str | None = None,
         memory_context: str | None = None,
+        tool_context: dict | None = None,
     ) -> RunResult:
         return RunResult(final_response=prompt, streamed_text=prompt)
 
@@ -34,12 +35,14 @@ class CapturingEngine:
         model: str | None = None,
         conversation_context: str | None = None,
         memory_context: str | None = None,
+        tool_context: dict | None = None,
     ) -> RunResult:
         self.calls.append(
             {
                 "prompt": prompt,
                 "conversation_context": conversation_context,
                 "memory_context": memory_context,
+                "tool_context": tool_context,
             }
         )
         return RunResult(
@@ -158,13 +161,17 @@ def test_session_manager_uses_memory_context_provider_and_completion_hook(tmp_pa
         )
 
         assert engine.calls[0]["memory_context"] == "Relevant project memory"
+        assert engine.calls[0]["tool_context"] == {
+            "source": "api",
+            "session_id": "desktop:local",
+        }
         assert len(completed_requests) == 1
         assert completed_requests[0].prompt == "need project context"
 
     asyncio.run(scenario())
 
 
-def test_session_manager_skips_memory_for_watch_runs(tmp_path) -> None:
+def test_session_manager_uses_spoken_messages_for_group_conversation_history(tmp_path) -> None:
     async def scenario() -> None:
         settings = KiraClawSettings(
             data_dir=tmp_path / "data",
@@ -173,27 +180,108 @@ def test_session_manager_skips_memory_for_watch_runs(tmp_path) -> None:
             slack_enabled=False,
         )
         engine = CapturingEngine(settings)
-        completed_requests = []
+        manager = SessionManager(engine)
 
-        def memory_context_provider(prompt: str, session_id: str, metadata: dict) -> str | None:
-            raise AssertionError("watch runs should not request long-term memory")
+        async def run_with_speak(prompt: str, spoken: list[str]) -> None:
+            await manager.run(
+                "slack:C1:main",
+                prompt,
+                metadata={"source": "slack-group"},
+            )
+            manager.get_session_records("slack:C1:main")[-1].result = RunResult(
+                final_response=f"internal:{prompt}",
+                streamed_text="",
+                spoken_messages=spoken,
+            )
 
-        async def on_record_complete(request) -> None:
-            completed_requests.append(request)
-
-        manager = SessionManager(
-            engine,
-            memory_context_provider=memory_context_provider,
-            on_record_complete=on_record_complete,
+        await run_with_speak("세나, 첫번째", ["첫번째에 대한 답"])
+        await manager.run(
+            "slack:C1:main",
+            "세나, 두번째",
+            metadata={"source": "slack-group"},
         )
+
+        assert engine.calls[-1]["conversation_context"] is not None
+        assert "Assistant: 첫번째에 대한 답" in engine.calls[-1]["conversation_context"]
+        assert "internal:세나, 첫번째" not in engine.calls[-1]["conversation_context"]
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_keeps_group_runs_silent_without_speak_in_history(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        engine = CapturingEngine(settings)
+        manager = SessionManager(engine)
 
         await manager.run(
-            "watch:test",
-            "check every 5 minutes",
-            metadata={"source": "watch"},
+            "slack:C1:main",
+            "room message one",
+            metadata={"source": "slack-group"},
+        )
+        await manager.run(
+            "slack:C1:main",
+            "room message two",
+            metadata={"source": "slack-group"},
         )
 
-        assert engine.calls[0]["memory_context"] is None
-        assert completed_requests == []
+        assert engine.calls[-1]["conversation_context"] is None
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_keeps_channel_dm_runs_silent_without_speak_in_history(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        engine = CapturingEngine(settings)
+        manager = SessionManager(engine)
+
+        await manager.run(
+            "telegram:dm:1",
+            "dm message one",
+            metadata={"source": "telegram-dm"},
+        )
+        await manager.run(
+            "telegram:dm:1",
+            "dm message two",
+            metadata={"source": "telegram-dm"},
+        )
+
+        assert engine.calls[-1]["conversation_context"] is None
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_calls_record_observer_after_run_completion(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        observed: list[tuple[str, str]] = []
+
+        def record_observer(record) -> None:
+            observed.append((record.run_id, record.state))
+
+        manager = SessionManager(
+            FakeEngine(settings),
+            record_observer=record_observer,
+        )
+
+        record = await manager.run("desktop:local", "hello")
+
+        assert observed == [(record.run_id, "completed")]
 
     asyncio.run(scenario())

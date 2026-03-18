@@ -1,12 +1,13 @@
 import { applyAgentIdentity } from "./branding.mjs";
 import { clearChatThread, bindChatActions } from "./chat.mjs";
-import { byId, initializePasswordToggles } from "./dom.mjs";
+import { byId, initializePasswordToggles, setText } from "./dom.mjs";
 import { updateHomeStatus, bindHomeActions } from "./home.mjs";
 import { bindNavigation } from "./navigation.mjs";
 import { bindSettingsActions, applySettingsToForm, collectSettingsUpdates, setSettingsStatus } from "./settings.mjs";
 import { bindSkillsActions, renderSkillsState } from "./skills.mjs";
+import { bindScheduleActions, renderSchedulesState } from "./schedules.mjs";
+import { bindRunLogActions, renderRunLogsState } from "./logs.mjs";
 import { state } from "./state.mjs";
-import { bindWatchActions, collectWatchPayload, getNewWatchId, renderWatchState, setWatchStatus, validateWatchPayload } from "./watch.mjs";
 
 const api = window.kiraclaw;
 let engineActionTimer = null;
@@ -17,18 +18,18 @@ function renderDesktopState() {
   }
   applyAgentIdentity(state);
   updateHomeStatus(state, state.daemonStatus, state.runtime);
-  if (!(state.activeView === "watch" && state.watchDirty)) {
-    renderWatchState(state);
-  }
 }
 
 async function refreshActiveView() {
   await refreshRuntime();
-  if (state.activeView === "watch") {
-    await loadWatchData();
-  }
   if (state.activeView === "skills") {
     await loadSkills();
+  }
+  if (state.activeView === "schedules") {
+    await loadSchedules();
+  }
+  if (state.activeView === "runs") {
+    await loadRunLogs();
   }
 }
 
@@ -75,28 +76,6 @@ async function loadAppMeta() {
   renderDesktopState();
 }
 
-async function loadWatchData() {
-  try {
-    const [watchesResponse, runsResponse] = await Promise.all([
-      api.getWatches(),
-      api.getWatchRuns(50),
-    ]);
-    state.watches = watchesResponse.watches || [];
-    state.watchRuns = runsResponse.runs || [];
-    if (!state.watchDraft && state.selectedWatchId && !state.watches.some((row) => row.watch_id === state.selectedWatchId)) {
-      state.selectedWatchId = null;
-    }
-    if (!state.watchDraft && !state.selectedWatchId && state.watches.length > 0) {
-      state.selectedWatchId = state.watches[0].watch_id;
-    }
-    if (!(state.activeView === "watch" && state.watchDirty)) {
-      renderWatchState(state);
-    }
-  } catch (error) {
-    setWatchStatus(`Watch load failed: ${error.message}`);
-  }
-}
-
 async function loadSkills() {
   try {
     state.skills = await api.getSkills();
@@ -105,6 +84,36 @@ async function loadSkills() {
     state.skills = { skills: [] };
     setSettingsStatus(`Skill load failed: ${error.message}`);
     renderSkillsState(state);
+  }
+}
+
+async function loadSchedules() {
+  try {
+    const response = await api.getSchedules();
+    state.schedules = response.schedules || [];
+    state.scheduleFile = response.schedule_file || "";
+    state.scheduleError = "";
+    renderSchedulesState(state);
+  } catch (error) {
+    state.schedules = [];
+    state.scheduleFile = "";
+    state.scheduleError = error.message;
+    renderSchedulesState(state);
+  }
+}
+
+async function loadRunLogs() {
+  try {
+    const response = await api.getRunLogs(50);
+    state.runLogs = response.logs || [];
+    state.runLogFile = response.run_log_file || "";
+    state.runLogError = "";
+    renderRunLogsState(state);
+  } catch (error) {
+    state.runLogs = [];
+    state.runLogFile = "";
+    state.runLogError = error.message;
+    renderRunLogsState(state);
   }
 }
 
@@ -138,84 +147,6 @@ async function refreshRuntime() {
   }
 
   renderDesktopState();
-}
-
-async function saveWatch(watchId) {
-  setWatchStatus("Saving watch...");
-  try {
-    const payload = collectWatchPayload(watchId);
-    if (!payload) {
-      setWatchStatus("Watch form is missing.");
-      return;
-    }
-    const validationError = validateWatchPayload(payload);
-    if (validationError) {
-      setWatchStatus(validationError);
-      return;
-    }
-    const response = await api.saveWatch(payload);
-    state.selectedWatchId = response.watch?.watch_id || payload.watch_id || null;
-    state.watchDraft = false;
-    state.watchDirty = false;
-    await loadWatchData();
-    setWatchStatus("Watch saved.");
-  } catch (error) {
-    setWatchStatus(`Watch save failed: ${error.message}`);
-  }
-}
-
-async function runWatchNow(watchId) {
-  if (!watchId) {
-    setWatchStatus("Select a watch first.");
-    return;
-  }
-  setWatchStatus("Running watch now...");
-  try {
-    const response = await api.runWatchNow(watchId);
-    await loadWatchData();
-    setWatchStatus(response.run?.state === "completed" ? "Watch run completed." : "Watch run finished.");
-  } catch (error) {
-    setWatchStatus(`Run failed: ${error.message}`);
-  }
-}
-
-async function deleteWatch(watchId) {
-  if (!watchId) {
-    setWatchStatus("Select a watch first.");
-    return;
-  }
-  setWatchStatus("Deleting watch...");
-  try {
-    await api.deleteWatch(watchId);
-    state.selectedWatchId = state.selectedWatchId === watchId ? null : state.selectedWatchId;
-    state.watchDraft = false;
-    state.watchDirty = false;
-    await loadWatchData();
-    setWatchStatus("Watch deleted.");
-  } catch (error) {
-    setWatchStatus(`Delete failed: ${error.message}`);
-  }
-}
-
-function resetWatchForm() {
-  if (state.watchDraft) {
-    state.selectedWatchId = getNewWatchId();
-    renderWatchState(state);
-    const draftConditionInput = document.querySelector(`[data-watch-item="${getNewWatchId()}"] [data-watch-input="condition"]`);
-    draftConditionInput?.focus();
-    draftConditionInput?.scrollIntoView({ block: "nearest" });
-    setWatchStatus("Finish the current draft first.");
-    return;
-  }
-
-  state.selectedWatchId = getNewWatchId();
-  state.watchDraft = true;
-  state.watchDirty = false;
-  renderWatchState(state);
-  const draftConditionInput = document.querySelector(`[data-watch-item="${getNewWatchId()}"] [data-watch-input="condition"]`);
-  draftConditionInput?.focus();
-  draftConditionInput?.scrollIntoView({ block: "nearest" });
-  setWatchStatus("New watch form is ready.");
 }
 
 async function saveSettings({ restart = false } = {}) {
@@ -312,11 +243,14 @@ function bindActions() {
   bindNavigation({
     onViewChange: (viewName) => {
       state.activeView = viewName;
-      if (viewName === "watch") {
-        loadWatchData().catch(() => {});
-      }
       if (viewName === "skills") {
         loadSkills().catch(() => {});
+      }
+      if (viewName === "schedules") {
+        loadSchedules().catch(() => {});
+      }
+      if (viewName === "runs") {
+        loadRunLogs().catch(() => {});
       }
       refreshRuntime().catch(() => {});
     },
@@ -367,18 +301,6 @@ function bindActions() {
     state,
     onAfterSend: refreshRuntime,
   });
-  bindWatchActions({
-    state,
-    onSelect: (watchId) => {
-      state.selectedWatchId = watchId;
-      renderWatchState(state);
-    },
-    onReload: loadWatchData,
-    onNew: resetWatchForm,
-    onSave: saveWatch,
-    onRunNow: runWatchNow,
-    onDelete: deleteWatch,
-  });
   bindSkillsActions({
     state,
     onReload: () => loadSkills(),
@@ -391,6 +313,26 @@ function bindActions() {
       try {
         const result = await api.openPath(targetPath);
         setSettingsStatus(result.message || "Skill folder opened.");
+      } catch (error) {
+        setSettingsStatus(`Open Folder failed: ${error.message}`);
+      }
+    },
+  });
+  bindScheduleActions({
+    onReload: loadSchedules,
+  });
+  bindRunLogActions({
+    state,
+    onReload: loadRunLogs,
+    onOpenPath: async (targetPath) => {
+      if (!targetPath) {
+        setSettingsStatus("Run log file is not configured.");
+        return;
+      }
+      setSettingsStatus("Opening run log file...");
+      try {
+        const result = await api.openPath(targetPath);
+        setSettingsStatus(result.message || "Run log file opened.");
       } catch (error) {
         setSettingsStatus(`Open Folder failed: ${error.message}`);
       }
@@ -413,4 +355,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadAppMeta();
   await loadConfig();
   await refreshActiveView();
+  await loadRunLogs();
 });

@@ -23,10 +23,19 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _is_watch_metadata(metadata: dict[str, Any] | None) -> bool:
-    if not metadata:
-        return False
-    return str(metadata.get("source", "")).strip().lower() == "watch"
+def _external_response_text(record: RunRecord) -> str:
+    result = record.result
+    if result is None:
+        return ""
+
+    source = str(record.metadata.get("source", "")).strip().lower()
+    if result.spoken_messages:
+        return result.public_response_text
+    if source in {"", "api"}:
+        return result.internal_summary
+    if source in {"slack-group", "telegram-group", "slack-dm", "telegram-dm", "scheduler"}:
+        return ""
+    return result.internal_summary
 
 
 @dataclass
@@ -126,6 +135,7 @@ class SessionLane:
                         request.model,
                         conversation_context,
                         memory_context,
+                        {**request.metadata, "session_id": self.session_id},
                     )
                     record.result = result
                     record.state = "completed"
@@ -178,12 +188,14 @@ class SessionManager:
         engine: KiraClawEngine,
         memory_context_provider: Callable[[str, str, dict[str, Any]], str | None] | None = None,
         on_record_complete: Callable[[MemoryWriteRequest], Any] | None = None,
+        record_observer: Callable[[RunRecord], Any] | None = None,
     ) -> None:
         self.engine = engine
         self.record_limit = max(1, engine.settings.session_record_limit)
         self.idle_timeout_seconds = max(0.05, engine.settings.session_idle_seconds)
         self.memory_context_provider = memory_context_provider
         self.on_record_complete = on_record_complete
+        self.record_observer = record_observer
         self._lanes: dict[str, SessionLane] = {}
         self._records: dict[str, list[RunRecord]] = {}
 
@@ -212,7 +224,8 @@ class SessionManager:
                 continue
             if record.state != "completed" or record.result is None:
                 continue
-            if not record.prompt.strip() or not record.result.final_response.strip():
+            response_text = _external_response_text(record)
+            if not record.prompt.strip() or not response_text.strip():
                 continue
             recent_turns.append(record)
 
@@ -227,7 +240,7 @@ class SessionManager:
             ]
             for record in recent_turns:
                 lines.append(f"User: {_clip_conversation_text(record.prompt)}")
-                lines.append(f"Assistant: {_clip_conversation_text(record.result.final_response)}")
+                lines.append(f"Assistant: {_clip_conversation_text(_external_response_text(record))}")
             parts.append("\n".join(lines))
 
         return "\n\n".join(parts) if parts else None
@@ -238,7 +251,7 @@ class SessionManager:
         session_id: str,
         metadata: dict[str, Any] | None,
     ) -> str | None:
-        if self.memory_context_provider is None or _is_watch_metadata(metadata):
+        if self.memory_context_provider is None:
             return None
         try:
             return self.memory_context_provider(prompt, session_id, metadata or {})
@@ -251,13 +264,12 @@ class SessionManager:
             self.on_record_complete is None
             or record.state != "completed"
             or record.result is None
-            or _is_watch_metadata(record.metadata)
         ):
             return
         request = MemoryWriteRequest(
             session_id=record.session_id,
             prompt=record.prompt,
-            response=record.result.final_response,
+            response=_external_response_text(record),
             created_at=record.finished_at or record.created_at,
             metadata=record.metadata,
         )
@@ -267,6 +279,16 @@ class SessionManager:
                 await maybe_result
         except Exception as exc:
             logger.warning("Memory save enqueue failed for %s: %s", record.run_id, exc)
+
+    async def _observe_record(self, record: RunRecord) -> None:
+        if self.record_observer is None:
+            return
+        try:
+            maybe_result = self.record_observer(record)
+            if inspect.isawaitable(maybe_result):
+                await maybe_result
+        except Exception as exc:
+            logger.warning("Record observer failed for %s: %s", record.run_id, exc)
 
     def _get_lane(self, session_id: str) -> SessionLane:
         lane = self._lanes.get(session_id)
@@ -302,7 +324,7 @@ class SessionManager:
             metadata=metadata or {},
         )
         self._append_record(session_id, record)
-        return await lane.enqueue(
+        record = await lane.enqueue(
             RunRequest(
                 prompt=prompt,
                 provider=provider,
@@ -312,6 +334,8 @@ class SessionManager:
             ),
             record,
         )
+        await self._observe_record(record)
+        return record
 
     def list_sessions(self) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []

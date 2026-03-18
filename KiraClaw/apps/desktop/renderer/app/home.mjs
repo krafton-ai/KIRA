@@ -93,14 +93,14 @@ function defaultBannerState(statusState) {
   if (statusState === "online") {
     return {
       tone: "success",
-      message: "KIRA Engine is online on this Mac.",
+      message: "KIRA Engine is online on this device.",
     };
   }
 
   if (statusState === "offline") {
     return {
       tone: "error",
-      message: "KIRA Engine is offline on this Mac.",
+      message: "KIRA Engine is offline on this device.",
     };
   }
 

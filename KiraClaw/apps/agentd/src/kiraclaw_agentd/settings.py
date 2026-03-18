@@ -4,6 +4,7 @@ import json
 import os
 from functools import lru_cache
 from pathlib import Path
+import shutil
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -63,6 +64,13 @@ def _parse_bool(value: str | None) -> bool | None:
     return None
 
 
+def _default_bundled_skills_dir() -> Path | None:
+    candidate = Path(__file__).resolve().parents[4] / "defaults" / "skills"
+    if candidate.exists() and candidate.is_dir():
+        return candidate
+    return None
+
+
 class KiraClawSettings(BaseSettings):
     """Product-level settings for the local daemon."""
 
@@ -79,6 +87,7 @@ class KiraClawSettings(BaseSettings):
     provider: str = "claude"
     model: str | None = None
     agent_name: str = "KIRA"
+    agent_persona: str = ""
     skills_enabled: bool = True
     mcp_enabled: bool = True
     mcp_time_enabled: bool = True
@@ -108,7 +117,7 @@ class KiraClawSettings(BaseSettings):
     remote_mcp_servers: str = ""
     browser_profile_dir: Path | None = None
     browser_output_dir: Path | None = None
-    max_turns: int = 64
+    max_turns: int = 100
     max_tokens: int = 16_384
     token_limit: int = 180_000
     max_output_chars: int = 30_000
@@ -122,14 +131,15 @@ class KiraClawSettings(BaseSettings):
     slack_signing_secret: str = ""
     slack_team_id: str = ""
     slack_allowed_names: str = ""
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_allowed_names: str = ""
     desktop_app_enabled: bool = True
     single_gateway_per_host: bool = True
     session_scope: str = "session-lane"
     session_record_limit: int = 100
     session_idle_seconds: float = 900
     memory_enabled: bool = True
-    watch_enabled: bool = True
-    watch_history_limit: int = 200
 
     home_mode: str = "auto"
     compatibility_mode: bool = False
@@ -144,11 +154,11 @@ class KiraClawSettings(BaseSettings):
     legacy_config_loaded: bool = False
     schedule_dir: Path | None = None
     schedule_file: Path | None = None
-    watch_dir: Path | None = None
-    watch_file: Path | None = None
-    watch_state_file: Path | None = None
     memory_dir: Path | None = None
     memory_index_file: Path | None = None
+    run_log_dir: Path | None = None
+    run_log_file: Path | None = None
+    default_skills_dir: Path | None = None
 
     allow_commands: list[str] = Field(default_factory=lambda: [
         "ls", "cat", "head", "tail", "find", "grep", "rg", "wc",
@@ -192,19 +202,18 @@ class KiraClawSettings(BaseSettings):
         if "schedule_file" not in explicit_fields:
             schedule_dir = self.schedule_dir or (self.workspace_dir / "schedule_data")
             object.__setattr__(self, "schedule_file", schedule_dir / "schedules.json")
-        if "watch_dir" not in explicit_fields:
-            object.__setattr__(self, "watch_dir", self.workspace_dir / "watch_data")
-        if "watch_file" not in explicit_fields:
-            watch_dir = self.watch_dir or (self.workspace_dir / "watch_data")
-            object.__setattr__(self, "watch_file", watch_dir / "watches.json")
-        if "watch_state_file" not in explicit_fields:
-            watch_dir = self.watch_dir or (self.workspace_dir / "watch_data")
-            object.__setattr__(self, "watch_state_file", watch_dir / "state.json")
         if "memory_dir" not in explicit_fields:
             object.__setattr__(self, "memory_dir", self.workspace_dir / "memories")
         if "memory_index_file" not in explicit_fields:
             memory_dir = self.memory_dir or (self.workspace_dir / "memories")
             object.__setattr__(self, "memory_index_file", memory_dir / "index.json")
+        if "run_log_dir" not in explicit_fields:
+            object.__setattr__(self, "run_log_dir", self.workspace_dir / "logs")
+        if "run_log_file" not in explicit_fields:
+            run_log_dir = self.run_log_dir or (self.workspace_dir / "logs")
+            object.__setattr__(self, "run_log_file", run_log_dir / "runs.jsonl")
+        if "default_skills_dir" not in explicit_fields:
+            object.__setattr__(self, "default_skills_dir", _default_bundled_skills_dir())
         if "browser_profile_dir" not in explicit_fields:
             object.__setattr__(self, "browser_profile_dir", self.workspace_dir / "chrome_profile")
         if "browser_output_dir" not in explicit_fields:
@@ -250,6 +259,9 @@ class KiraClawSettings(BaseSettings):
             elif legacy_values.get("BOT_NAME"):
                 object.__setattr__(self, "agent_name", legacy_values["BOT_NAME"].strip())
 
+        if "agent_persona" not in explicit_fields and legacy_values.get("KIRACLAW_AGENT_PERSONA"):
+            object.__setattr__(self, "agent_persona", legacy_values["KIRACLAW_AGENT_PERSONA"].strip())
+
         if "slack_allowed_names" not in explicit_fields and not self.slack_allowed_names:
             merged_allowed_names: list[str] = []
             if legacy_values.get("SLACK_ALLOWED_NAMES"):
@@ -294,6 +306,8 @@ class KiraClawSettings(BaseSettings):
             "atlassian_enabled": "ATLASSIAN_ENABLED",
             "tableau_enabled": "TABLEAU_ENABLED",
             "browser_enabled": "CHROME_ENABLED",
+            "slack_enabled": "SLACK_ENABLED",
+            "telegram_enabled": "TELEGRAM_ENABLED",
         }
         for field_name, legacy_key in legacy_bool_field_map.items():
             if field_name in explicit_fields:
@@ -307,6 +321,8 @@ class KiraClawSettings(BaseSettings):
             "slack_app_token": "SLACK_APP_TOKEN",
             "slack_signing_secret": "SLACK_SIGNING_SECRET",
             "slack_team_id": "SLACK_TEAM_ID",
+            "telegram_bot_token": "TELEGRAM_BOT_TOKEN",
+            "telegram_allowed_names": "TELEGRAM_ALLOWED_NAMES",
             "perplexity_api_key": "PERPLEXITY_API_KEY",
             "gitlab_api_url": "GITLAB_API_URL",
             "gitlab_personal_access_token": "GITLAB_PERSONAL_ACCESS_TOKEN",
@@ -346,17 +362,35 @@ class KiraClawSettings(BaseSettings):
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
-        (self.workspace_dir / "skills").mkdir(parents=True, exist_ok=True)
-        if self.watch_dir:
-            self.watch_dir.mkdir(parents=True, exist_ok=True)
-        if self.watch_state_file:
-            self.watch_state_file.parent.mkdir(parents=True, exist_ok=True)
+        skills_dir = self.workspace_dir / "skills"
+        skills_dir.mkdir(parents=True, exist_ok=True)
         if self.memory_dir:
             self.memory_dir.mkdir(parents=True, exist_ok=True)
+        if self.run_log_dir:
+            self.run_log_dir.mkdir(parents=True, exist_ok=True)
         if self.browser_profile_dir:
             self.browser_profile_dir.mkdir(parents=True, exist_ok=True)
         if self.browser_output_dir:
             self.browser_output_dir.mkdir(parents=True, exist_ok=True)
+        self._seed_default_skills(skills_dir)
+
+    def _seed_default_skills(self, workspace_skills_dir: Path) -> None:
+        source_dir = self.default_skills_dir
+        if not source_dir or not source_dir.exists() or not source_dir.is_dir():
+            return
+
+        for source_entry in sorted(source_dir.iterdir(), key=lambda path: path.name.lower()):
+            if source_entry.name.startswith("."):
+                continue
+
+            target_entry = workspace_skills_dir / source_entry.name
+            if target_entry.exists():
+                continue
+
+            if source_entry.is_dir():
+                shutil.copytree(source_entry, target_entry)
+            elif source_entry.is_file():
+                shutil.copy2(source_entry, target_entry)
 
 
 @lru_cache

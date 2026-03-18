@@ -216,7 +216,11 @@ def build_mcp_server_configs(settings: KiraClawSettings) -> list[McpServerConfig
             McpServerConfig(
                 name="scheduler",
                 command=SCHEDULER_MCP_COMMAND,
-                env={"KIRACLAW_SCHEDULE_FILE": str(settings.schedule_file)},
+                env={
+                    "KIRACLAW_SCHEDULE_FILE": str(settings.schedule_file),
+                    "KIRACLAW_HOST": settings.host,
+                    "KIRACLAW_PORT": str(settings.port),
+                },
             )
         )
     if settings.mcp_context7_enabled:
