@@ -1,5 +1,9 @@
 # 🤖 KIRA - AI Virtual Coworker
 
+> [!IMPORTANT]
+> **KIRA-Slack is now legacy software.** It will not receive new feature updates.
+> Please install **KiraClaw** for all new usage and future updates: [https://kira.krafton-ai.com](https://kira.krafton-ai.com)
+
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-green)](https://nodejs.org/)
 [![Electron](https://img.shields.io/badge/electron-latest-9feaf9)](https://www.electronjs.org/)

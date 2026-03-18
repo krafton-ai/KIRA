@@ -1,0 +1,121 @@
+name: "KIRA-Slack: Final Legacy Release"
+
+on:
+  push:
+    tags:
+      - 'slack-v*'
+
+env:
+  NODE_VERSION: "22"
+  SLACK_WORKING_DIR: KIRA-Slack/electron-app
+
+jobs:
+  deploy-mac:
+    name: Build and Deploy macOS KIRA-Slack Legacy App
+    runs-on: self-hosted
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load nvm and verify Node.js
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          node --version
+          npm --version
+
+      - name: Unlock Keychain
+        run: |
+          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" ~/Library/Keychains/login.keychain-db
+          security set-keychain-settings -t 7200 ~/Library/Keychains/login.keychain-db
+
+      - name: Setup AWS CLI
+        run: |
+          which aws || brew install awscli
+          aws --version
+
+      - name: Install dependencies
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          cd ${{ env.SLACK_WORKING_DIR }}
+          npm ci
+
+      - name: Extract version from tag and update package version
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          VERSION=${GITHUB_REF_NAME#slack-v}
+          echo "📦 Version: $VERSION"
+          VERSION="$VERSION" node -e 'const fs=require("fs"); const file=process.argv[1]; const pkg=JSON.parse(fs.readFileSync(file,"utf8")); pkg.version=process.env.VERSION; fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);' "${{ env.SLACK_WORKING_DIR }}/package.json"
+
+      - name: Build and Deploy macOS KIRA-Slack Legacy App
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ap-northeast-2
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          cd ${{ env.SLACK_WORKING_DIR }}
+          npm run deploy:mac
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-macos-build-${{ github.ref_name }}
+          path: |
+            ${{ env.SLACK_WORKING_DIR }}/dist/*.dmg
+            ${{ env.SLACK_WORKING_DIR }}/dist/*.zip
+          retention-days: 30
+
+  deploy-windows:
+    name: Build and Deploy Windows KIRA-Slack Legacy App
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd ${{ env.SLACK_WORKING_DIR }}
+          npm ci
+
+      - name: Extract version from tag and update package version
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF_NAME#slack-v}
+          echo "📦 Version: $VERSION"
+          VERSION="$VERSION" node -e 'const fs=require("fs"); const file=process.argv[1]; const pkg=JSON.parse(fs.readFileSync(file,"utf8")); pkg.version=process.env.VERSION; fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);' "${{ env.SLACK_WORKING_DIR }}/package.json"
+
+      - name: Build and Deploy Windows KIRA-Slack Legacy App
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ap-northeast-2
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          cd ${{ env.SLACK_WORKING_DIR }}
+          npm run deploy:win
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-windows-build-${{ github.ref_name }}
+          path: |
+            ${{ env.SLACK_WORKING_DIR }}/dist/*.exe
+          retention-days: 30
