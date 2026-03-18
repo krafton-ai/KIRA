@@ -1,12 +1,12 @@
 ---
 layout: home
 title: KiraClaw
-description: Install KiraClaw, the local agentic desktop runtime for chat, channels, skills, schedules, and run logs.
+description: Install KiraClaw, the local agentic desktop runtime for chat, Slack, Telegram, Discord, skills, schedules, and run logs.
 
 hero:
   name: KiraClaw
   text: Agentic Desktop Runtime
-  tagline: Local chat, Slack and Telegram channels, workspace skills, schedules, and run logs in one desktop app.
+  tagline: Local chat, Slack, Telegram, and Discord channels, workspace skills, schedules, and run logs in one desktop app.
   image:
     src: /images/screenshots/hero-kira-claw.png
     alt: KiraClaw
@@ -28,7 +28,7 @@ features:
 
   - icon: 💬
     title: Shared Core Across Surfaces
-    details: Talk, Slack, Telegram, schedules, memory, and skills all run on the same local daemon.
+    details: Talk, Slack, Telegram, Discord, schedules, memory, and skills all run on the same local daemon.
 
   - icon: 🗂️
     title: Workspace-First
@@ -62,7 +62,7 @@ That means:
 KiraClaw currently includes:
 
 - `Talk` for direct local runs
-- Slack and Telegram channel adapters
+- Slack, Telegram, and Discord channel adapters
 - workspace `skills/`
 - local memory with index tools
 - schedules for automation

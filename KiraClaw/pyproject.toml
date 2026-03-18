@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kiraclaw"
-version = "0.1.1"
+version = "0.1.2"
 description = "KiraClaw local daemon and product scaffolding"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,8 +13,8 @@ dependencies = [
     "fastapi>=0.119.0",
     "uvicorn>=0.38.0",
     "pydantic-settings>=2.0.0",
-    "krim>=0.4.4",
-    "krim-sdk>=0.4.2",
+    "krim>=0.4.5",
+    "krim-sdk>=0.4.3",
     "slack-bolt>=1.23.0",
     "discord.py>=2.4.0",
     "aiohttp>=3.10.0",

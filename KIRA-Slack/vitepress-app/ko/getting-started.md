@@ -52,6 +52,7 @@ KiraClaw는 다음을 위한 로컬 filesystem base directory를 사용합니다
 
 - Slack
 - Telegram
+- Discord
 
 채널 설정은 데스크톱 `Channels` 화면에서 합니다.
 

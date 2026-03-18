@@ -52,6 +52,7 @@ The app currently supports:
 
 - Slack
 - Telegram
+- Discord
 
 Channel settings live in the desktop `Channels` screen.
 

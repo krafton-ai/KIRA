@@ -38,7 +38,7 @@ KiraClaw is a local AI agent runtime that combines:
 
 - a long-running local gateway
 - a desktop control plane
-- channel adapters for Slack and Telegram
+- channel adapters for Slack, Telegram, and Discord
 - local memory, skills, schedules, and run logs
 
 It is closer to an agent runtime than to a simple chat wrapper.
@@ -73,7 +73,7 @@ KiraClaw combines those lessons without dragging the old multi-agent Slack-first
 ### Core surfaces
 
 - `Talk`: direct local chat against the same daemon
-- `Channels`: Slack and Telegram on the same runtime
+- `Channels`: Slack, Telegram, and Discord on the same runtime
 - `Skills`: workspace skills loaded from `Filesystem Base Dir/skills`
 - `Schedules`: time-based automation runs
 - `Logs`: recent run logs, internal summaries, spoken replies, and tool usage
@@ -110,6 +110,7 @@ Optional:
 
 - Slack app credentials
 - Telegram bot token
+- Discord bot token
 - Anthropic / OpenAI / Vertex credentials depending on provider
 
 ### Run the daemon
@@ -203,6 +204,7 @@ That keeps the index stable while still letting the agent manipulate the underly
 
 - Slack
 - Telegram
+- Discord
 
 ### Local agent substrate
 

@@ -275,7 +275,7 @@ Expected:
 
 - Engine startup latency can be high when many MCP servers are enabled.
 - Custom remote MCP failures should not break the rest of the runtime.
-- File-return behavior should be checked separately for Slack and Telegram.
+- File-return behavior should be checked separately for Slack, Telegram, and Discord.
 - Desktop still lacks full automated e2e coverage.
 - Shared-room behavior is more agentic now, so a run without `speak` can correctly result in no outward reply.
 

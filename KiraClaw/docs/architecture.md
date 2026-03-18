@@ -20,7 +20,7 @@ Add one thin layer at a time:
 1. `krim-sdk` stays the agent engine.
 2. `agentd` becomes the local daemon and product boundary.
 3. `desktop` becomes the packaged shell.
-4. Slack arrives first and Telegram follows as a lightweight second chat channel.
+4. Slack arrives first, Telegram follows, and Discord shares the same adapter pattern.
 5. Desktop direct chat lives on the same daemon boundary.
 6. Memory and schedules stay explicit modules instead of becoming hidden product magic.
 
@@ -155,7 +155,17 @@ Responsibility:
 
 Telegram is intentionally lightweight and shares the same agent core.
 
-### Layer 6: Desktop Direct Chat
+### Layer 6: Discord Adapter
+
+Responsibility:
+
+- receive Discord DM and server-channel messages
+- reuse the same room-transcript model as other shared-space channels
+- support the same `speak` and file-return model
+
+Discord is intentionally implemented as another thin adapter on the same daemon boundary.
+
+### Layer 7: Desktop Direct Chat
 
 Responsibility:
 
@@ -165,7 +175,7 @@ Responsibility:
 
 This is explicitly secondary to Slack in the first phase.
 
-### Layer 7: Memory
+### Layer 8: Memory
 
 Responsibility:
 
@@ -180,7 +190,7 @@ The intended explicit flow is:
 - read or edit the actual memory files
 - `memory_index_save`
 
-### Layer 8: Scheduler
+### Layer 9: Scheduler
 
 Responsibility:
 

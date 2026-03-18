@@ -1,12 +1,12 @@
 ---
 layout: home
 title: KiraClaw
-description: KiraClaw는 로컬에서 동작하는 agentic desktop runtime입니다. 대화, Slack/Telegram 채널, skills, schedules, run logs를 하나의 앱에서 다룹니다.
+description: KiraClaw는 로컬에서 동작하는 agentic desktop runtime입니다. 대화, Slack/Telegram/Discord 채널, skills, schedules, run logs를 하나의 앱에서 다룹니다.
 
 hero:
   name: KiraClaw
   text: Agentic Desktop Runtime
-  tagline: 로컬 대화, Slack/Telegram 채널, workspace skills, schedules, run logs를 하나의 데스크톱 앱으로.
+  tagline: 로컬 대화, Slack/Telegram/Discord 채널, workspace skills, schedules, run logs를 하나의 데스크톱 앱으로.
   image:
     src: /images/screenshots/hero-kira-claw.png
     alt: KiraClaw
@@ -28,7 +28,7 @@ features:
 
   - icon: 💬
     title: 하나의 코어
-    details: Talk, Slack, Telegram, schedules, memory, skills가 같은 로컬 daemon 위에서 동작합니다.
+    details: Talk, Slack, Telegram, Discord, schedules, memory, skills가 같은 로컬 daemon 위에서 동작합니다.
 
   - icon: 🗂️
     title: 워크스페이스 중심
@@ -62,7 +62,7 @@ features:
 KiraClaw에는 현재 다음이 포함됩니다.
 
 - `Talk` 로컬 실행
-- Slack / Telegram 채널
+- Slack / Telegram / Discord 채널
 - workspace `skills/`
 - local memory + index tools
 - schedules 자동화

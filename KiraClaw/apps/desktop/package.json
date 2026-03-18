@@ -2,7 +2,7 @@
   "name": "@kiraclaw/desktop",
   "productName": "KiraClaw",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "KRAFTON AI",
   "description": "KiraClaw desktop shell",
   "main": "main.js",
