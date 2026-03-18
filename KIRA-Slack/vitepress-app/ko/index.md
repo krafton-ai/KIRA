@@ -13,10 +13,10 @@ hero:
   actions:
     - theme: brand
       text: macOS 다운로드
-      link: https://kira.krafton-ai.com/download/KiraClaw-0.1.58-arm64.dmg
+      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-arm64.dmg
     - theme: alt
       text: Windows 다운로드
-      link: https://kira.krafton-ai.com/download/KiraClaw-0.1.58-x64.exe
+      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-x64.exe
     - theme: alt
       text: GitHub
       link: https://github.com/krafton-ai/KIRA/tree/main/KiraClaw
@@ -70,8 +70,8 @@ KiraClaw에는 현재 다음이 포함됩니다.
 
 ## 다운로드
 
-- macOS (Apple Silicon): [KiraClaw for macOS 다운로드](https://kira.krafton-ai.com/download/KiraClaw-0.1.58-arm64.dmg)
-- Windows: [KiraClaw for Windows 다운로드](https://kira.krafton-ai.com/download/KiraClaw-0.1.58-x64.exe)
+- macOS (Apple Silicon): [KiraClaw for macOS 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-arm64.dmg)
+- Windows: [KiraClaw for Windows 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-x64.exe)
 
 macOS에서 첫 실행 경고가 뜨면 [문제 해결](/ko/troubleshooting)을 보면 됩니다.
 
