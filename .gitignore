@@ -68,6 +68,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!KiraClaw/apps/desktop/lib/
+!KiraClaw/apps/desktop/lib/**
 lib64/
 parts/
 sdist/
