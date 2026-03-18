@@ -21,6 +21,7 @@ Use this checklist before shipping the first `KIRA-Slack -> KiraClaw` bridge rel
 - desktop app starts and reaches `healthy`
 - daemon starts from packaged resources
 - packaged bridge app auto-installs `uv` if it is missing on the target machine
+- packaged daemon can resolve published `krim` and `krim-sdk` dependencies
 - Slack chat works
 - desktop chat works
 - skills load from `Filesystem Base Dir/skills`

@@ -599,8 +599,8 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.10.0" },
     { name = "apscheduler", specifier = ">=3.10.4" },
     { name = "fastapi", specifier = ">=0.119.0" },
-    { name = "krim", specifier = ">=0.4.2" },
-    { name = "krim-sdk", specifier = ">=0.4.0" },
+    { name = "krim", specifier = ">=0.4.3" },
+    { name = "krim-sdk", specifier = ">=0.4.1" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "slack-bolt", specifier = ">=1.23.0" },
@@ -610,29 +610,29 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "krim"
-version = "0.4.2"
+version = "0.4.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "krim-sdk" },
     { name = "prompt-toolkit" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/4b/8cca091e844274c97b353bb69b054e56611b4d472e98d4e0a139cbb60003/krim-0.4.2.tar.gz", hash = "sha256:526a9a6465e8a4a32c2dcdab1a99f2346ea0a8e5da5d07986a9e2f2174f6f54c", size = 15082, upload-time = "2026-02-14T05:09:49.611Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/ff/95eaf58ae3ac93a16878f6db3a144cdc1176bcbf2b63462aeec1feb36a47/krim-0.4.3.tar.gz", hash = "sha256:8b1e0d5a63af2f9bcb16b2e28136884c35300fd32673b09c5c999fe5f7e3d61d", size = 17334, upload-time = "2026-03-18T05:17:13.636Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/b0/83b9f037bf282d75358510fd6b297f119f6ffc39d93c24dd340a59c90a08/krim-0.4.2-py3-none-any.whl", hash = "sha256:b746c9e344556aa5a95923e72865d85b3627b914994dc5416bc2fca0a9ebcd90", size = 18647, upload-time = "2026-02-14T05:09:48.17Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/97/16a08e3d1b9c2d87ebe909dace51868a0c87f427106691ae0bb28e95d489/krim-0.4.3-py3-none-any.whl", hash = "sha256:4efec212fff6bf244fd490454bbffd3b4c4fbb9c03ef722f097e43b02ecaa152", size = 19857, upload-time = "2026-03-18T05:17:11.428Z" },
 ]
 
 [[package]]
 name = "krim-sdk"
-version = "0.4.0"
+version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
     { name = "openai" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/e3/4e54ee435fce55d2ed855bca82635b5721a0b0c96db02dd1e4c5a08634e3/krim_sdk-0.4.0.tar.gz", hash = "sha256:30ff6de450218834794dbd0cc606bd8633ccf177f967d9f2ee0f37aa79f0f2d3", size = 34210, upload-time = "2026-02-14T04:59:30.687Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/04/6c6afb8bdf6f9c7f79c3bee7dd4d69a7f5d1cddd87807540c28060402846/krim_sdk-0.4.1.tar.gz", hash = "sha256:317be49d3b3d65016da4dda641c07cc6092d658f1b995eb392d5e63095a13dbb", size = 35241, upload-time = "2026-03-18T05:17:12.341Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/87/0a8a890752535978770986b4946da4830e7267ef2dd9ee98a439ed7b0a28/krim_sdk-0.4.0-py3-none-any.whl", hash = "sha256:7fac5b009cc64fdc77adf4c904d87148298ca8bb9866ec0e6878a2209931629d", size = 41657, upload-time = "2026-02-14T04:59:29.377Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/61/9cb9678c26010dd17cceb70960fa61d2c505129d88a4d406d7fca6862a3e/krim_sdk-0.4.1-py3-none-any.whl", hash = "sha256:d712c37c3ea5190983fdb5a315fc0937e20ec355f4139f7a4116a0ab7b03dd0f", size = 42020, upload-time = "2026-03-18T05:17:10.377Z" },
 ]
 
 [[package]]

@@ -70,9 +70,7 @@ for path in \
   "$RESOURCES_DIR/app.asar" \
   "$RESOURCES_DIR/kiraclaw/pyproject.toml" \
   "$RESOURCES_DIR/kiraclaw/uv.lock" \
-  "$RESOURCES_DIR/kiraclaw/apps/agentd/src" \
-  "$RESOURCES_DIR/kiraclaw/vendor/krim" \
-  "$RESOURCES_DIR/kiraclaw/vendor/krim-sdk"
+  "$RESOURCES_DIR/kiraclaw/apps/agentd/src"
 do
   if [[ ! -e "$path" ]]; then
     echo "[bridge] missing packaged resource: $path" >&2

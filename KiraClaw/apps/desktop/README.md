@@ -66,8 +66,8 @@ Current scope of the bridge scaffold:
 - preserves the S3 updater feed
 - reuses the old icons and mac entitlements
 - stages the KiraClaw Python project under `process.resourcesPath/kiraclaw`
-- stages local `KRIM` and `krim-sdk` sources under `process.resourcesPath/kiraclaw/vendor`
 - packaged app starts the daemon with `uv run kiraclaw-agentd`
+- packaged app resolves `krim` and `krim-sdk` from published Python packages using the bundled lockfile
 
 Smoke build scope:
 

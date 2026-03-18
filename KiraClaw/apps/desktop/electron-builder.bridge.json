@@ -90,24 +90,6 @@
     {
       "from": "../../README.md",
       "to": "kiraclaw/README.md"
-    },
-    {
-      "from": "../../../../KRIM/packages/krim",
-      "to": "kiraclaw/vendor/krim",
-      "filter": [
-        "pyproject.toml",
-        "README.md",
-        "src/**/*"
-      ]
-    },
-    {
-      "from": "../../../../KRIM/packages/krim-sdk",
-      "to": "kiraclaw/vendor/krim-sdk",
-      "filter": [
-        "pyproject.toml",
-        "README.md",
-        "src/**/*"
-      ]
     }
   ],
   "publish": {

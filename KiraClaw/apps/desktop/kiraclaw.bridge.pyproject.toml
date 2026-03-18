@@ -13,8 +13,8 @@ dependencies = [
     "fastapi>=0.119.0",
     "uvicorn>=0.38.0",
     "pydantic-settings>=2.0.0",
-    "krim>=0.4.2",
-    "krim-sdk>=0.4.0",
+    "krim>=0.4.3",
+    "krim-sdk>=0.4.1",
     "slack-bolt>=1.23.0",
     "aiohttp>=3.10.0",
 ]
@@ -37,7 +37,3 @@ include = [
     "/apps/agentd/src/kiraclaw_agentd",
     "/docs",
 ]
-
-[tool.uv.sources]
-krim = { path = "vendor/krim" }
-"krim-sdk" = { path = "vendor/krim-sdk" }

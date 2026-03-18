@@ -28,17 +28,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Checkout KRIM dependency source
-        uses: actions/checkout@v4
-        with:
-          repository: krafton-ai/KRIM
-          path: KRIM-dependency
-
-      - name: Link KRIM dependency source
-        run: |
-          rm -rf ../KRIM
-          cp -R "$GITHUB_WORKSPACE/KRIM-dependency" ../KRIM
-
       - name: Load nvm and verify Node.js
         run: |
           export NVM_DIR="$HOME/.nvm"
@@ -126,18 +115,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Checkout KRIM dependency source
-        uses: actions/checkout@v4
-        with:
-          repository: krafton-ai/KRIM
-          path: KRIM-dependency
-
-      - name: Link KRIM dependency source
-        shell: pwsh
-        run: |
-          Remove-Item ..\KRIM -Recurse -Force -ErrorAction SilentlyContinue
-          Copy-Item -Path KRIM-dependency -Destination ..\KRIM -Recurse
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
