@@ -119,9 +119,108 @@ def _merge_context_prefix(*parts: str | None) -> str | None:
     return "\n\n".join(merged)
 
 
+def _base_message_text(message: dict[str, Any]) -> str:
+    return str(message.get("text") or message.get("caption") or "")
+
+
+def _extract_attachment_metadata(message: dict[str, Any]) -> list[dict[str, str]]:
+    extracted: list[dict[str, str]] = []
+    document = message.get("document")
+    if isinstance(document, dict):
+        extracted.append(
+            {
+                "name": str(document.get("file_name") or "document"),
+                "kind": "document",
+                "mime_type": str(document.get("mime_type") or "unknown"),
+                "file_id": str(document.get("file_id") or ""),
+                "size": str(document.get("file_size") or ""),
+            }
+        )
+
+    video = message.get("video")
+    if isinstance(video, dict):
+        extracted.append(
+            {
+                "name": str(video.get("file_name") or "video.mp4"),
+                "kind": "video",
+                "mime_type": str(video.get("mime_type") or "video/mp4"),
+                "file_id": str(video.get("file_id") or ""),
+                "size": str(video.get("file_size") or ""),
+            }
+        )
+
+    audio = message.get("audio")
+    if isinstance(audio, dict):
+        extracted.append(
+            {
+                "name": str(audio.get("file_name") or audio.get("title") or "audio"),
+                "kind": "audio",
+                "mime_type": str(audio.get("mime_type") or "audio/mpeg"),
+                "file_id": str(audio.get("file_id") or ""),
+                "size": str(audio.get("file_size") or ""),
+            }
+        )
+
+    voice = message.get("voice")
+    if isinstance(voice, dict):
+        extracted.append(
+            {
+                "name": "voice.ogg",
+                "kind": "voice",
+                "mime_type": str(voice.get("mime_type") or "audio/ogg"),
+                "file_id": str(voice.get("file_id") or ""),
+                "size": str(voice.get("file_size") or ""),
+            }
+        )
+
+    photo = message.get("photo")
+    if isinstance(photo, list) and photo:
+        largest = photo[-1]
+        if isinstance(largest, dict):
+            extracted.append(
+                {
+                    "name": str(largest.get("file_unique_id") or largest.get("file_id") or "photo") + ".jpg",
+                    "kind": "photo",
+                    "mime_type": "image/jpeg",
+                    "file_id": str(largest.get("file_id") or ""),
+                    "size": str(largest.get("file_size") or ""),
+                }
+            )
+    return extracted
+
+
+def _format_attachment_prompt(files: list[dict[str, str]]) -> str:
+    if not files:
+        return ""
+    lines = [
+        "Attached Telegram files:",
+        "Use telegram_download_file with the provided file_id if you need the actual file contents.",
+    ]
+    for file_info in files:
+        details = [file_info["kind"], file_info["mime_type"]]
+        if file_info["size"]:
+            details.append(f"size_bytes={file_info['size']}")
+        line = f"- {file_info['name']} ({', '.join(part for part in details if part)})"
+        if file_info["file_id"]:
+            line += f" [file_id: {file_info['file_id']}]"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _build_message_prompt(message: dict[str, Any], bot_username: str | None, *, mention: bool, agent_name: str | None = None) -> str:
+    text = _clean_prompt_text(
+        _base_message_text(message),
+        bot_username,
+        mention=mention,
+        agent_name=agent_name,
+    )
+    attachments = _format_attachment_prompt(_extract_attachment_metadata(message))
+    return _merge_context_prefix(text, attachments) or ""
+
+
 def _is_human_message(message: dict[str, Any]) -> bool:
     user = message.get("from", {})
-    return bool(message.get("text")) and not bool(user.get("is_bot"))
+    return bool(_base_message_text(message) or _extract_attachment_metadata(message)) and not bool(user.get("is_bot"))
 
 
 def _session_id_from_message(message: dict[str, Any]) -> str:
@@ -163,7 +262,10 @@ def _merge_prompt_text(items: list[_BufferedTelegramMessage]) -> str:
         text = item.prompt.strip()
         if not text:
             continue
-        lines.append(f"- {item.user_name}: {text}")
+        text_lines = text.splitlines()
+        lines.append(f"- {item.user_name}: {text_lines[0]}")
+        for continuation in text_lines[1:]:
+            lines.append(f"  {continuation}")
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
@@ -301,7 +403,7 @@ class TelegramGateway:
         if not _is_human_message(message):
             return
         bot_username = str(self.identity.get("username") or "")
-        text = str(message.get("text", ""))
+        text = _base_message_text(message)
         mention = bool(bot_username and f"@{bot_username.lower()}" in text.lower())
 
         user = message.get("from", {})
@@ -311,8 +413,8 @@ class TelegramGateway:
             logger.info("Ignoring unauthorized Telegram user: %s", matchable_name)
             return
 
-        prompt = _clean_prompt_text(
-            text,
+        prompt = _build_message_prompt(
+            message,
             bot_username,
             mention=mention,
             agent_name=self.settings.agent_name,

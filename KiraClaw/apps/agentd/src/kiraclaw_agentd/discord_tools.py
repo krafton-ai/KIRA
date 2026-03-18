@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pathlib import Path
+import re
 from typing import Any, Callable
+from urllib.parse import unquote, urlparse
+from urllib.request import Request, urlopen
 
 import aiohttp
 
@@ -17,6 +21,20 @@ DiscordRequester = Callable[[str, int | str, dict[str, Any], str | None], dict[s
 def _build_result(success: bool, **payload: Any) -> str:
     body = {"success": success, **payload}
     return json.dumps(body, ensure_ascii=False, indent=2)
+
+
+def _sanitize_filename(name: str) -> str:
+    cleaned = re.sub(r"[^\w.\-]+", "_", name.strip())
+    return cleaned or "discord_file"
+
+
+def _resolve_output_path(workspace_dir: Path, *, url: str, channel_id: str | None, file_path: str | None) -> Path:
+    if file_path:
+        candidate = Path(file_path).expanduser()
+        return candidate if candidate.is_absolute() else workspace_dir / candidate
+    filename = _sanitize_filename(Path(unquote(urlparse(url).path)).name)
+    channel_segment = channel_id or "downloads"
+    return workspace_dir / "files" / "discord" / channel_segment / filename
 
 
 def _make_requester(bot_token: str) -> DiscordRequester:
@@ -163,6 +181,43 @@ class DiscordUploadFileTool(_DiscordToolBase):
         return self._run_with_error_boundary(_upload)
 
 
+class DiscordDownloadAttachmentTool(Tool):
+    name = "discord_download_attachment"
+    description = "Download a Discord attachment URL into the local workspace so you can inspect or process it."
+    parameters = {
+        "url": {
+            "type": "string",
+            "description": "Discord attachment URL from an incoming message.",
+        },
+        "channel_id": {
+            "type": "string",
+            "description": "Optional channel ID for organizing the download path.",
+            "optional": True,
+        },
+        "file_path": {
+            "type": "string",
+            "description": "Optional output path. Relative paths are resolved from FILESYSTEM_BASE_DIR.",
+            "optional": True,
+        },
+    }
+
+    def __init__(self, bot_token: str, workspace_dir: Path) -> None:
+        self._bot_token = bot_token
+        self._workspace_dir = workspace_dir
+
+    def run(self, url: str, channel_id: str | None = None, file_path: str | None = None) -> str:
+        try:
+            target = _resolve_output_path(self._workspace_dir, url=url, channel_id=channel_id, file_path=file_path)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            request = Request(url, headers={"Authorization": f"Bot {self._bot_token}"})
+            with urlopen(request) as response:
+                body = response.read()
+            target.write_bytes(body)
+            return _build_result(True, path=str(target), size_bytes=len(body), channel_id=channel_id, url=url)
+        except Exception as exc:
+            return _build_result(False, error=str(exc))
+
+
 def build_discord_tools(
     settings: KiraClawSettings,
     *,
@@ -175,4 +230,5 @@ def build_discord_tools(
     return [
         DiscordSendMessageTool(request_fn),
         DiscordUploadFileTool(request_fn),
+        DiscordDownloadAttachmentTool(settings.discord_bot_token, settings.workspace_dir),
     ]

@@ -40,6 +40,7 @@ class _FakeMessage:
         author: _FakeUser,
         guild=None,
         raw_mentions: list[int] | None = None,
+        attachments: list[object] | None = None,
     ) -> None:
         self.channel = _FakeChannel(channel_id)
         self.id = message_id
@@ -47,6 +48,15 @@ class _FakeMessage:
         self.author = author
         self.guild = guild
         self.raw_mentions = raw_mentions or []
+        self.attachments = attachments or []
+
+
+class _FakeAttachment:
+    def __init__(self, *, filename: str, url: str, content_type: str = "application/pdf", size: int = 0) -> None:
+        self.filename = filename
+        self.url = url
+        self.content_type = content_type
+        self.size = size
 
 
 def test_discord_display_name_and_matchable_name() -> None:
@@ -67,6 +77,15 @@ def test_discord_human_message_and_sessions() -> None:
 
     assert _is_human_message(dm) is True
     assert _is_human_message(group) is True
+    assert _is_human_message(
+        _FakeMessage(
+            channel_id=4,
+            message_id=80,
+            content="",
+            author=_FakeUser(user_id=10, name="jiho"),
+            attachments=[_FakeAttachment(filename="report.pdf", url="https://cdn.discordapp.com/report.pdf")],
+        )
+    ) is True
     assert _is_human_message(bot_message) is False
     assert _session_id_from_message(dm) == "discord:dm:1"
     assert _session_id_from_message(group) == "discord:2:main"
@@ -190,6 +209,54 @@ def test_discord_messages_from_same_user_are_debounced_and_merged(tmp_path) -> N
         assert len(session_manager.calls) == 1
         assert session_manager.calls[0]["prompt"] == "first\nsecond"
         assert sent == [{"channel_id": 123, "text": "discord ok", "reply_to_message_id": 51}]
+
+    asyncio.run(scenario())
+
+
+def test_discord_attachment_message_without_text_is_processed(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+            discord_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = DiscordGateway(session_manager, settings, debounce_seconds=0.05)
+        gateway.identity = {"id": 999, "name": "kira"}
+        sent: list[dict] = []
+
+        async def fake_send(channel_id, text, reply_to_message_id=None):
+            sent.append({"channel_id": channel_id, "text": text, "reply_to_message_id": reply_to_message_id})
+
+        gateway.send_message = fake_send  # type: ignore[method-assign]
+
+        message = _FakeMessage(
+            channel_id=123,
+            message_id=50,
+            content="",
+            author=_FakeUser(user_id=10, name="batteryho", display_name="지호"),
+            attachments=[
+                _FakeAttachment(
+                    filename="report.pdf",
+                    url="https://cdn.discordapp.com/attachments/C1/F1/report.pdf",
+                    content_type="application/pdf",
+                    size=2048,
+                )
+            ],
+        )
+
+        await gateway._handle_message(message)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        prompt = session_manager.calls[0]["prompt"]
+        assert "Attached Discord files:" in prompt
+        assert "report.pdf (application/pdf, size_bytes=2048)" in prompt
+        assert "Use discord_download_attachment" in prompt
+        assert "url: https://cdn.discordapp.com/attachments/C1/F1/report.pdf" in prompt
+        assert sent == [{"channel_id": 123, "text": "discord ok", "reply_to_message_id": 50}]
 
     asyncio.run(scenario())
 

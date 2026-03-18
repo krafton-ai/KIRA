@@ -136,14 +136,73 @@ def _merge_prompt_text(items: list[_BufferedSlackEvent]) -> str:
         text = item.prompt.strip()
         if not text:
             continue
-        lines.append(f"- {item.user_name}: {text}")
+        text_lines = text.splitlines()
+        lines.append(f"- {item.user_name}: {text_lines[0]}")
+        for continuation in text_lines[1:]:
+            lines.append(f"  {continuation}")
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def _is_human_message_event(event: dict[str, Any]) -> bool:
-    if event.get("subtype") or event.get("bot_id"):
+    subtype = str(event.get("subtype") or "")
+    if event.get("bot_id"):
+        return False
+    if subtype and subtype != "file_share":
         return False
     return bool(event.get("user"))
+
+
+def _extract_file_metadata(event: dict[str, Any]) -> list[dict[str, str]]:
+    extracted: list[dict[str, str]] = []
+    for raw_file in event.get("files") or []:
+        if not isinstance(raw_file, dict):
+            continue
+        name = str(raw_file.get("name") or raw_file.get("title") or raw_file.get("id") or "unnamed")
+        mimetype = str(raw_file.get("mimetype") or raw_file.get("filetype") or "unknown")
+        url_private = str(raw_file.get("url_private") or raw_file.get("url_private_download") or "").strip()
+        size = raw_file.get("size")
+        size_text = str(size) if size is not None else ""
+        extracted.append(
+            {
+                "name": name,
+                "mimetype": mimetype,
+                "url_private": url_private,
+                "size": size_text,
+            }
+        )
+    return extracted
+
+
+def _format_file_prompt(files: list[dict[str, str]]) -> str:
+    if not files:
+        return ""
+
+    lines = [
+        "Attached Slack files:",
+        "Use slack_download_file with the provided url_private if you need the actual file contents.",
+    ]
+    for file_info in files:
+        detail_parts = [file_info["mimetype"]]
+        if file_info["size"]:
+            detail_parts.append(f"size_bytes={file_info['size']}")
+        detail = ", ".join(part for part in detail_parts if part)
+        line = f"- {file_info['name']}"
+        if detail:
+            line += f" ({detail})"
+        if file_info["url_private"]:
+            line += f" [url_private: {file_info['url_private']}]"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _build_event_prompt(event: dict[str, Any], *, mention: bool, agent_name: str | None = None) -> str:
+    text = _clean_prompt_text(
+        str(event.get("text") or ""),
+        mention=mention,
+        agent_name=agent_name,
+    )
+    files_block = _format_file_prompt(_extract_file_metadata(event))
+    return _merge_context_prefix(text, files_block) or ""
 
 
 class SlackGateway:
@@ -328,9 +387,6 @@ class SlackGateway:
     async def _schedule_event(self, event: dict[str, Any], client, logger, mention: bool) -> None:
         if not _is_human_message_event(event):
             return
-        text = event.get("text", "").strip()
-        if not text:
-            return
 
         session_id = _session_id_from_event(event)
         channel = event["channel"]
@@ -340,12 +396,12 @@ class SlackGateway:
         if not _is_authorized_user_name(user_name, self.settings.slack_allowed_names):
             logger.info("Ignoring unauthorized Slack user: user=%s name=%s", user, user_name)
             return
-        cleaned_text = _clean_prompt_text(
-            text,
+        prompt = _build_event_prompt(
+            event,
             mention=mention,
             agent_name=self.settings.agent_name,
         )
-        if not cleaned_text:
+        if not prompt:
             return
         logger.info(
             "Queueing Slack run with debounce: session_id=%s channel=%s user=%s name=%s mention=%s dm=%s",
@@ -366,7 +422,7 @@ class SlackGateway:
                 reply_thread_ts=reply_thread_ts,
                 user=user,
                 user_name=user_name,
-                prompt=cleaned_text,
+                prompt=prompt,
                 mention=mention,
                 client=client,
             ),
@@ -467,10 +523,20 @@ class SlackGateway:
         ]
         for message in messages:
             speaker = await self._speaker_for_message(client, message)
-            cleaned = _strip_bot_mention(message.get("text", ""), self.identity.get("user_id"))
+            cleaned = _build_event_prompt(
+                {
+                    **message,
+                    "text": _strip_bot_mention(message.get("text", ""), self.identity.get("user_id")),
+                },
+                mention=False,
+                agent_name=self.settings.agent_name,
+            )
             if not cleaned:
                 continue
-            lines.append(f"{speaker}: {cleaned}")
+            cleaned_lines = cleaned.splitlines()
+            lines.append(f"{speaker}: {cleaned_lines[0]}")
+            for continuation in cleaned_lines[1:]:
+                lines.append(f"  {continuation}")
 
         return "\n".join(lines) if len(lines) > 1 else None
 
@@ -495,7 +561,7 @@ class SlackGateway:
             return [
                 message
                 for message in messages
-                if message.get("text") and str(message.get("ts")) not in excluded
+                if (message.get("text") or message.get("files")) and str(message.get("ts")) not in excluded
             ]
 
         thread_ts = event.get("thread_ts")
@@ -511,7 +577,7 @@ class SlackGateway:
             message
             for message in response.get("messages", [])
             if (
-                message.get("text")
+                (message.get("text") or message.get("files"))
                 and _ts_value(message.get("ts")) < current_value
                 and str(message.get("ts")) not in excluded
             )

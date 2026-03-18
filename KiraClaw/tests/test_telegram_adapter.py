@@ -49,6 +49,13 @@ def test_is_human_message_filters_bot_messages() -> None:
 
     assert _is_human_message(private) is True
     assert _is_human_message(group) is True
+    assert _is_human_message(
+        {
+            "chat": {"id": 1, "type": "private"},
+            "from": {"id": 10, "is_bot": False},
+            "document": {"file_id": "doc-1", "file_name": "report.pdf", "mime_type": "application/pdf"},
+        }
+    ) is True
     assert _is_human_message(bot_message) is False
 
 
@@ -225,6 +232,57 @@ def test_telegram_messages_from_same_user_are_debounced_and_merged(tmp_path) -> 
 
         assert len(session_manager.calls) == 1
         assert session_manager.calls[0]["prompt"] == "first\nsecond"
+        assert sent == [{"chat_id": 123, "text": "telegram ok", "reply_to_message_id": None}]
+
+    asyncio.run(scenario())
+
+
+def test_telegram_document_message_without_text_is_processed(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+            telegram_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = TelegramGateway(session_manager, settings, debounce_seconds=0.05)
+        sent: list[dict] = []
+
+        async def fake_send(chat_id, text, reply_to_message_id=None):
+            sent.append(
+                {
+                    "chat_id": chat_id,
+                    "text": text,
+                    "reply_to_message_id": reply_to_message_id,
+                }
+            )
+
+        gateway.send_message = fake_send  # type: ignore[method-assign]
+        gateway.identity = {"id": 999, "username": "jiho_kira_bot", "first_name": "지호봇"}
+
+        message = {
+            "chat": {"id": 123, "type": "private"},
+            "from": {"id": 10, "username": "batteryho", "first_name": "지호", "last_name": "전", "is_bot": False},
+            "message_id": 50,
+            "document": {
+                "file_id": "doc-1",
+                "file_name": "report.pdf",
+                "mime_type": "application/pdf",
+                "file_size": 2048,
+            },
+        }
+
+        await gateway._handle_message(message)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        prompt = session_manager.calls[0]["prompt"]
+        assert "Attached Telegram files:" in prompt
+        assert "report.pdf (document, application/pdf, size_bytes=2048)" in prompt
+        assert "Use telegram_download_file" in prompt
+        assert "file_id: doc-1" in prompt
         assert sent == [{"chat_id": 123, "text": "telegram ok", "reply_to_message_id": None}]
 
     asyncio.run(scenario())

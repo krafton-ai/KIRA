@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from kiraclaw_agentd.settings import KiraClawSettings
+import kiraclaw_agentd.slack_tools as slack_tools_module
 from kiraclaw_agentd.slack_tools import build_slack_tools
 
 
@@ -69,6 +70,7 @@ def test_slack_tools_are_gated_by_slack_channel_enablement(tmp_path) -> None:
         "slack_reply_to_thread",
         "slack_add_reaction",
         "slack_upload_file",
+        "slack_download_file",
     ]
 
 
@@ -139,3 +141,43 @@ def test_slack_upload_file_reports_missing_path(tmp_path) -> None:
     assert result["success"] is False
     assert "file_not_found" in result["error"]
     assert client.uploads == []
+
+
+def test_slack_download_file_saves_into_workspace(tmp_path, monkeypatch) -> None:
+    settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=tmp_path / "workspace",
+        home_mode="modern",
+        slack_enabled=True,
+        slack_bot_token="xoxb-token",
+    )
+    client = FakeSlackClient()
+    tools = {tool.name: tool for tool in build_slack_tools(settings, client_factory=lambda: client)}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return b"hello from slack"
+
+    def fake_urlopen(request):
+        assert request.full_url == "https://files.slack.com/files-pri/T1-F1/report.pdf"
+        assert request.headers["Authorization"] == "Bearer xoxb-token"
+        return _FakeResponse()
+
+    monkeypatch.setattr(slack_tools_module, "urlopen", fake_urlopen)
+    result = json.loads(
+        tools["slack_download_file"].run(
+            url_private="https://files.slack.com/files-pri/T1-F1/report.pdf",
+            channel_id="C123",
+        )
+    )
+
+    assert result["success"] is True
+    saved = Path(result["path"])
+    assert saved == settings.workspace_dir / "files" / "slack" / "C123" / "report.pdf"
+    assert saved.read_bytes() == b"hello from slack"

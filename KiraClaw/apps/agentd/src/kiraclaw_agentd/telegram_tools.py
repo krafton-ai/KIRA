@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pathlib import Path
+import re
 from typing import Any, Callable
+from urllib.parse import quote, unquote, urlparse
+from urllib.request import Request, urlopen
 
 import aiohttp
 
@@ -17,6 +21,19 @@ TelegramRequester = Callable[[str, dict[str, Any], str | None], dict[str, Any]]
 def _build_result(success: bool, **payload: Any) -> str:
     body = {"success": success, **payload}
     return json.dumps(body, ensure_ascii=False, indent=2)
+
+
+def _sanitize_filename(name: str) -> str:
+    cleaned = re.sub(r"[^\w.\-]+", "_", name.strip())
+    return cleaned or "telegram_file"
+
+
+def _resolve_output_path(workspace_dir: Path, *, default_name: str, chat_id: str | None, file_path: str | None) -> Path:
+    if file_path:
+        candidate = Path(file_path).expanduser()
+        return candidate if candidate.is_absolute() else workspace_dir / candidate
+    chat_segment = chat_id or "downloads"
+    return workspace_dir / "files" / "telegram" / chat_segment / _sanitize_filename(default_name)
 
 
 def _make_requester(bot_token: str) -> TelegramRequester:
@@ -158,6 +175,62 @@ class TelegramUploadFileTool(_TelegramToolBase):
         return self._run_with_error_boundary(_upload)
 
 
+class TelegramDownloadFileTool(Tool):
+    name = "telegram_download_file"
+    description = "Download a Telegram file by file_id into the local workspace so you can inspect or process it."
+    parameters = {
+        "file_id": {
+            "type": "string",
+            "description": "Telegram file_id from an incoming attachment.",
+        },
+        "chat_id": {
+            "type": "string",
+            "description": "Optional chat ID for organizing the download path.",
+            "optional": True,
+        },
+        "file_path": {
+            "type": "string",
+            "description": "Optional output path. Relative paths are resolved from FILESYSTEM_BASE_DIR.",
+            "optional": True,
+        },
+    }
+
+    def __init__(self, bot_token: str, workspace_dir: Path) -> None:
+        self._bot_token = bot_token
+        self._workspace_dir = workspace_dir
+
+    def run(self, file_id: str, chat_id: str | None = None, file_path: str | None = None) -> str:
+        try:
+            info_request = Request(
+                f"https://api.telegram.org/bot{self._bot_token}/getFile?file_id={quote(file_id, safe='')}"
+            )
+            with urlopen(info_request) as response:
+                info = json.loads(response.read().decode("utf-8"))
+            if not info.get("ok"):
+                return _build_result(False, error=str(info.get("description") or info))
+            result = info.get("result", {})
+            telegram_path = str(result.get("file_path") or "")
+            if not telegram_path:
+                return _build_result(False, error="file_path_missing")
+
+            default_name = Path(unquote(urlparse(telegram_path).path)).name or f"{file_id}.bin"
+            target = _resolve_output_path(
+                self._workspace_dir,
+                default_name=default_name,
+                chat_id=chat_id,
+                file_path=file_path,
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+            download_request = Request(f"https://api.telegram.org/file/bot{self._bot_token}/{telegram_path}")
+            with urlopen(download_request) as response:
+                body = response.read()
+            target.write_bytes(body)
+            return _build_result(True, path=str(target), size_bytes=len(body), chat_id=chat_id, file_id=file_id)
+        except Exception as exc:
+            return _build_result(False, error=str(exc))
+
+
 def build_telegram_tools(
     settings: KiraClawSettings,
     *,
@@ -170,4 +243,5 @@ def build_telegram_tools(
     return [
         TelegramSendMessageTool(request_fn),
         TelegramUploadFileTool(request_fn),
+        TelegramDownloadFileTool(settings.telegram_bot_token, settings.workspace_dir),
     ]

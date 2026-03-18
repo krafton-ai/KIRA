@@ -128,6 +128,64 @@ def _build_delivery_context_prefix(channel_id: int | str, reply_to_message_id: i
     return "\n".join(lines)
 
 
+def _merge_context_prefix(*parts: str | None) -> str | None:
+    merged = [part.strip() for part in parts if part and part.strip()]
+    if not merged:
+        return None
+    return "\n\n".join(merged)
+
+
+def _extract_attachment_metadata(message: Any) -> list[dict[str, str]]:
+    extracted: list[dict[str, str]] = []
+    for attachment in list(getattr(message, "attachments", []) or []):
+        extracted.append(
+            {
+                "name": str(getattr(attachment, "filename", "") or getattr(attachment, "id", "attachment")),
+                "content_type": str(getattr(attachment, "content_type", "") or "unknown"),
+                "size": str(getattr(attachment, "size", "") or ""),
+                "url": str(getattr(attachment, "url", "") or ""),
+            }
+        )
+    return extracted
+
+
+def _format_attachment_prompt(files: list[dict[str, str]]) -> str:
+    if not files:
+        return ""
+    lines = [
+        "Attached Discord files:",
+        "Use discord_download_attachment with the provided url if you need the actual file contents.",
+    ]
+    for file_info in files:
+        details = [file_info["content_type"]]
+        if file_info["size"]:
+            details.append(f"size_bytes={file_info['size']}")
+        line = f"- {file_info['name']}"
+        if details:
+            line += f" ({', '.join(part for part in details if part)})"
+        if file_info["url"]:
+            line += f" [url: {file_info['url']}]"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _build_message_prompt(
+    message: Any,
+    bot_user_id: int | str | None,
+    *,
+    mention: bool,
+    agent_name: str | None = None,
+) -> str:
+    text = _clean_prompt_text(
+        str(getattr(message, "content", "") or ""),
+        bot_user_id,
+        mention=mention,
+        agent_name=agent_name,
+    )
+    attachments = _format_attachment_prompt(_extract_attachment_metadata(message))
+    return _merge_context_prefix(text, attachments) or ""
+
+
 def _merge_prompt_text(items: list[_BufferedDiscordMessage]) -> str:
     if not items:
         return ""
@@ -139,7 +197,10 @@ def _merge_prompt_text(items: list[_BufferedDiscordMessage]) -> str:
         text = item.prompt.strip()
         if not text:
             continue
-        lines.append(f"- {item.user_name}: {text}")
+        text_lines = text.splitlines()
+        lines.append(f"- {item.user_name}: {text_lines[0]}")
+        for continuation in text_lines[1:]:
+            lines.append(f"  {continuation}")
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
@@ -147,7 +208,7 @@ def _is_human_message(message: Any) -> bool:
     author = getattr(message, "author", None)
     if author is None or bool(getattr(author, "bot", False)):
         return False
-    return bool(str(getattr(message, "content", "") or "").strip())
+    return bool(str(getattr(message, "content", "") or "").strip() or _extract_attachment_metadata(message))
 
 
 class DiscordGateway:
@@ -299,12 +360,7 @@ class DiscordGateway:
             logger.info("Ignoring unauthorized Discord user: %s", user_name)
             return
 
-        prompt = _clean_prompt_text(
-            str(getattr(message, "content", "") or ""),
-            bot_user_id,
-            mention=mention,
-            agent_name=self.settings.agent_name,
-        )
+        prompt = _build_message_prompt(message, bot_user_id, mention=mention, agent_name=self.settings.agent_name)
         if not prompt:
             return
 

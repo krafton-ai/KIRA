@@ -28,6 +28,7 @@ def test_clean_prompt_text_keeps_dm_text_intact() -> None:
 def test_is_human_message_event_only_accepts_human_messages() -> None:
     assert _is_human_message_event({"channel_type": "im", "user": "U1"}) is True
     assert _is_human_message_event({"channel_type": "channel", "user": "U1", "text": "hello"}) is True
+    assert _is_human_message_event({"channel_type": "im", "subtype": "file_share", "user": "U1", "files": [{}]}) is True
     assert _is_human_message_event({"channel_type": "im", "subtype": "message_changed", "user": "U1"}) is False
     assert _is_human_message_event({"channel_type": "im", "bot_id": "B123", "user": "U1"}) is False
     assert _is_human_message_event({"channel_type": "im"}) is False
@@ -257,6 +258,54 @@ def test_slack_messages_from_same_user_are_debounced_and_merged(tmp_path) -> Non
 
         assert len(session_manager.calls) == 1
         assert session_manager.calls[0]["prompt"] == "first\nsecond"
+        assert client.sent_messages == [{"channel": "D1", "text": "ok", "thread_ts": None}]
+
+    asyncio.run(scenario())
+
+
+def test_slack_file_share_message_without_text_is_processed(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = SlackGateway(session_manager, settings, debounce_seconds=0.05)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return None
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event = {
+            "channel": "D1",
+            "channel_type": "im",
+            "ts": "101.0",
+            "user": "U1",
+            "subtype": "file_share",
+            "files": [
+                {
+                    "name": "report.pdf",
+                    "mimetype": "application/pdf",
+                    "size": 2048,
+                    "url_private": "https://files.slack.com/files-pri/T1-F1/report.pdf",
+                }
+            ],
+        }
+
+        await gateway._schedule_event(event, client, logging.getLogger("test-slack"), mention=False)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        prompt = session_manager.calls[0]["prompt"]
+        assert "Attached Slack files:" in prompt
+        assert "report.pdf (application/pdf, size_bytes=2048)" in prompt
+        assert "Use slack_download_file" in prompt
+        assert "url_private: https://files.slack.com/files-pri/T1-F1/report.pdf" in prompt
         assert client.sent_messages == [{"channel": "D1", "text": "ok", "thread_ts": None}]
 
     asyncio.run(scenario())

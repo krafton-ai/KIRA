@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
+import re
 from typing import Any, Callable
+from urllib.parse import unquote, urlparse
+from urllib.request import Request, urlopen
 
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -38,6 +42,22 @@ class _SlackToolBase(Tool):
             return _build_result(False, error=error_message)
         except Exception as exc:
             return _build_result(False, error=str(exc))
+
+
+def _sanitize_filename(name: str) -> str:
+    cleaned = re.sub(r"[^\w.\-]+", "_", name.strip())
+    return cleaned or "slack_file"
+
+
+def _resolve_output_path(workspace_dir: Path, *, url_private: str, file_path: str | None, channel_id: str | None) -> Path:
+    if file_path:
+        candidate = Path(file_path).expanduser()
+        return candidate if candidate.is_absolute() else workspace_dir / candidate
+
+    parsed = urlparse(url_private)
+    filename = _sanitize_filename(Path(unquote(parsed.path)).name)
+    channel_segment = channel_id or "downloads"
+    return workspace_dir / "files" / "slack" / channel_segment / filename
 
 
 class SlackSendMessageTool(_SlackToolBase):
@@ -214,6 +234,61 @@ class SlackUploadFileTool(_SlackToolBase):
         return self._run_with_slack_error_boundary(_upload)
 
 
+class SlackDownloadFileTool(Tool):
+    name = "slack_download_file"
+    description = (
+        "Download a Slack file from url_private into the local workspace so you can inspect or process it."
+    )
+    parameters = {
+        "url_private": {
+            "type": "string",
+            "description": "Slack file url_private or url_private_download value.",
+        },
+        "channel_id": {
+            "type": "string",
+            "description": "Optional Slack channel ID for organizing the download path.",
+            "optional": True,
+        },
+        "file_path": {
+            "type": "string",
+            "description": (
+                "Optional output path. Relative paths are resolved from FILESYSTEM_BASE_DIR. "
+                "If omitted, the file is saved under files/slack/<channel_id or downloads>/."
+            ),
+            "optional": True,
+        },
+    }
+
+    def __init__(self, bot_token: str, workspace_dir: Path) -> None:
+        self._bot_token = bot_token
+        self._workspace_dir = workspace_dir
+
+    def run(self, url_private: str, channel_id: str | None = None, file_path: str | None = None) -> str:
+        try:
+            target = _resolve_output_path(
+                self._workspace_dir,
+                url_private=url_private,
+                file_path=file_path,
+                channel_id=channel_id,
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            request = Request(url_private, headers={"Authorization": f"Bearer {self._bot_token}"})
+            with urlopen(request) as response:
+                body = response.read()
+            target.write_bytes(body)
+            return _build_result(
+                True,
+                path=str(target),
+                size_bytes=len(body),
+                channel_id=channel_id,
+            )
+        except SlackApiError as exc:
+            error_message = exc.response.get("error", str(exc))
+            return _build_result(False, error=error_message)
+        except Exception as exc:
+            return _build_result(False, error=str(exc))
+
+
 def build_slack_tools(
     settings: KiraClawSettings,
     *,
@@ -228,5 +303,6 @@ def build_slack_tools(
         SlackReplyToThreadTool(factory),
         SlackAddReactionTool(factory),
         SlackUploadFileTool(factory),
+        SlackDownloadFileTool(settings.slack_bot_token, settings.workspace_dir),
     ]
     return tools

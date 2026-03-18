@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from kiraclaw_agentd.settings import KiraClawSettings
+import kiraclaw_agentd.telegram_tools as telegram_tools_module
 from kiraclaw_agentd.telegram_tools import build_telegram_tools
 
 
@@ -57,6 +58,7 @@ def test_telegram_tools_are_gated_by_channel_enablement(tmp_path) -> None:
     assert [tool.name for tool in build_telegram_tools(enabled)] == [
         "telegram_send_message",
         "telegram_upload_file",
+        "telegram_download_file",
     ]
 
 
@@ -130,3 +132,44 @@ def test_telegram_upload_file_reports_missing_path(tmp_path) -> None:
     assert result["success"] is False
     assert "file_not_found" in result["error"]
     assert requester.calls == []
+
+
+def test_telegram_download_file_saves_into_workspace(tmp_path, monkeypatch) -> None:
+    settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=tmp_path / "workspace",
+        home_mode="modern",
+        telegram_enabled=True,
+        telegram_bot_token="token",
+    )
+    requester = FakeTelegramRequester()
+    tools = {tool.name: tool for tool in build_telegram_tools(settings, requester=requester)}
+
+    class _FakeResponse:
+        def __init__(self, body: bytes) -> None:
+            self._body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self) -> bytes:
+            return self._body
+
+    def fake_urlopen(request):
+        url = request.full_url
+        if "getFile?file_id=doc-1" in url:
+            return _FakeResponse(b'{"ok": true, "result": {"file_path": "documents/file_1/report.pdf"}}')
+        if url == "https://api.telegram.org/file/bottoken/documents/file_1/report.pdf":
+            return _FakeResponse(b"hello from telegram")
+        raise AssertionError(url)
+
+    monkeypatch.setattr(telegram_tools_module, "urlopen", fake_urlopen)
+    result = json.loads(tools["telegram_download_file"].run(file_id="doc-1", chat_id="12345"))
+
+    assert result["success"] is True
+    saved = Path(result["path"])
+    assert saved == settings.workspace_dir / "files" / "telegram" / "12345" / "report.pdf"
+    assert saved.read_bytes() == b"hello from telegram"
