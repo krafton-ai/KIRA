@@ -51,6 +51,23 @@ class CapturingEngine:
         )
 
 
+class StaticResultEngine:
+    def __init__(self, settings: KiraClawSettings, result: RunResult) -> None:
+        self.settings = settings
+        self._result = result
+
+    def run(
+        self,
+        prompt: str,
+        provider: str | None = None,
+        model: str | None = None,
+        conversation_context: str | None = None,
+        memory_context: str | None = None,
+        tool_context: dict | None = None,
+    ) -> RunResult:
+        return self._result
+
+
 def test_session_manager_caps_record_history_per_session(tmp_path) -> None:
     async def scenario() -> None:
         settings = KiraClawSettings(
@@ -140,7 +157,7 @@ def test_session_manager_uses_memory_context_provider_and_completion_hook(tmp_pa
         completed_requests = []
 
         def memory_context_provider(prompt: str, session_id: str, metadata: dict) -> str | None:
-            assert prompt == "need project context"
+            assert prompt == "Remember the latest Project Coral context and continue from it."
             assert session_id == "desktop:local"
             assert metadata["source"] == "api"
             return "Relevant project memory"
@@ -156,7 +173,7 @@ def test_session_manager_uses_memory_context_provider_and_completion_hook(tmp_pa
 
         await manager.run(
             "desktop:local",
-            "need project context",
+            "Remember the latest Project Coral context and continue from it.",
             metadata={"source": "api"},
         )
 
@@ -166,7 +183,7 @@ def test_session_manager_uses_memory_context_provider_and_completion_hook(tmp_pa
             "session_id": "desktop:local",
         }
         assert len(completed_requests) == 1
-        assert completed_requests[0].prompt == "need project context"
+        assert completed_requests[0].prompt == "Remember the latest Project Coral context and continue from it."
 
     asyncio.run(scenario())
 
@@ -283,5 +300,144 @@ def test_session_manager_calls_record_observer_after_run_completion(tmp_path) ->
         record = await manager.run("desktop:local", "hello")
 
         assert observed == [(record.run_id, "completed")]
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_skips_memory_save_for_silent_group_runs(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        saved_requests = []
+
+        async def on_record_complete(request) -> None:
+            saved_requests.append(request)
+
+        manager = SessionManager(
+            CapturingEngine(settings),
+            on_record_complete=on_record_complete,
+        )
+
+        await manager.run(
+            "discord:123:main",
+            "room message one",
+            metadata={"source": "discord-group"},
+        )
+
+        assert saved_requests == []
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_skips_memory_save_for_short_small_talk(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        saved_requests = []
+
+        async def on_record_complete(request) -> None:
+            saved_requests.append(request)
+
+        manager = SessionManager(
+            StaticResultEngine(
+                settings,
+                RunResult(
+                    final_response="안녕! 반가워.",
+                    streamed_text="",
+                    spoken_messages=["안녕! 반가워."],
+                ),
+            ),
+            on_record_complete=on_record_complete,
+        )
+
+        await manager.run(
+            "desktop:local",
+            "안녕",
+            metadata={"source": "api"},
+        )
+
+        assert saved_requests == []
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_saves_explicit_memory_request(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        saved_requests = []
+
+        async def on_record_complete(request) -> None:
+            saved_requests.append(request)
+
+        manager = SessionManager(
+            StaticResultEngine(
+                settings,
+                RunResult(
+                    final_response="기억해둘게. 앞으로 보고서는 PDF로 줄게.",
+                    streamed_text="",
+                    spoken_messages=["기억해둘게. 앞으로 보고서는 PDF로 줄게."],
+                ),
+            ),
+            on_record_complete=on_record_complete,
+        )
+
+        await manager.run(
+            "desktop:local",
+            "앞으로 보고서는 PDF로 줘. 기억해줘.",
+            metadata={"source": "api"},
+        )
+
+        assert len(saved_requests) == 1
+        assert saved_requests[0].response == "기억해둘게. 앞으로 보고서는 PDF로 줄게."
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_saves_toolful_run_even_without_memory_words(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        saved_requests = []
+
+        async def on_record_complete(request) -> None:
+            saved_requests.append(request)
+
+        manager = SessionManager(
+            StaticResultEngine(
+                settings,
+                RunResult(
+                    final_response="Confluence 연결을 완료했고 기본 페이지 ID도 설정했어.",
+                    streamed_text="",
+                    spoken_messages=["Confluence 연결을 완료했고 기본 페이지 ID도 설정했어."],
+                    tool_events=[{"phase": "start", "name": "write"}],
+                ),
+            ),
+            on_record_complete=on_record_complete,
+        )
+
+        await manager.run(
+            "desktop:local",
+            "Confluence 연동을 마무리해줘.",
+            metadata={"source": "api"},
+        )
+
+        assert len(saved_requests) == 1
 
     asyncio.run(scenario())

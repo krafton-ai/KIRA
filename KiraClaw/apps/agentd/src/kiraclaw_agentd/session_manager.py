@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import inspect
 import logging
+import re
 import time
 from typing import Any, Callable
 from uuid import uuid4
@@ -17,6 +18,55 @@ _CONVERSATION_HISTORY_TURNS = 6
 _CONVERSATION_TEXT_CHAR_LIMIT = 1_200
 
 logger = logging.getLogger(__name__)
+
+_SMALL_TALK_PATTERNS = [
+    r"\b(?:hi|hello|hey|thanks|thank you|thx|ok|okay|cool|great|nice|bye|good morning|good night|lol|haha)\b",
+    r"(?:안녕|고마워|감사|감사합니다|오케이|좋아|수고|잘자|ㅋㅋ|ㅎㅎ)",
+]
+_EXPLICIT_MEMORY_PATTERNS = [
+    r"\b(?:remember|save|record|note|memor(?:y|ize))\b",
+    r"(?:기억|저장|기록|메모)",
+]
+_DURABLE_SIGNAL_PATTERNS = [
+    r"\b(?:prefer|preference|like|dislike|plan|planned|decision|decided|project|follow[- ]?up|deadline|schedule|status|issue|setup|token|credential|workspace|path|channel|install|version)\b",
+    r"(?:선호|좋아하|싫어하|계획|결정|프로젝트|후속|마감|일정|상태|이슈|설정|토큰|자격증명|워크스페이스|경로|채널|설치|버전)",
+]
+
+
+def _matches_any_pattern(text: str, patterns: list[str]) -> bool:
+    haystack = text.strip().lower()
+    if not haystack:
+        return False
+    return any(re.search(pattern, haystack, re.IGNORECASE) for pattern in patterns)
+
+
+def _should_auto_save(record: "RunRecord", response_text: str) -> bool:
+    prompt = record.prompt.strip()
+    response = response_text.strip()
+    if not prompt or not response:
+        return False
+
+    combined = f"{prompt}\n{response}"
+    result = record.result
+    tool_events = list(result.tool_events) if result else []
+    source = str(record.metadata.get("source", "")).strip().lower()
+
+    if _matches_any_pattern(combined, _EXPLICIT_MEMORY_PATTERNS):
+        return True
+    if tool_events:
+        return True
+
+    combined_length = len(combined)
+    if combined_length <= 120 and _matches_any_pattern(combined, _SMALL_TALK_PATTERNS):
+        return False
+
+    if _matches_any_pattern(combined, _DURABLE_SIGNAL_PATTERNS) and combined_length >= 80:
+        return True
+
+    if source in {"api", "", "scheduler"} and (len(prompt) >= 140 or len(response) >= 220):
+        return True
+
+    return False
 
 
 def utc_now() -> str:
@@ -274,10 +324,15 @@ class SessionManager:
             or record.result is None
         ):
             return
+        response_text = _external_response_text(record)
+        if not response_text.strip():
+            return
+        if not _should_auto_save(record, response_text):
+            return
         request = MemoryWriteRequest(
             session_id=record.session_id,
             prompt=record.prompt,
-            response=_external_response_text(record),
+            response=response_text,
             created_at=record.finished_at or record.created_at,
             metadata=record.metadata,
         )

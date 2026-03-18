@@ -43,7 +43,8 @@ class MemorySearchTool(Tool):
     name = "memory_search"
     description = (
         "Search long-term memory stored under Filesystem Base Dir/memories. "
-        "Use this when the user explicitly asks to inspect, search, or review saved memory."
+        "Use this when the user explicitly asks to inspect, search, or review saved memory, "
+        "or when you need additional memory context before answering an ongoing conversation."
     )
     parameters = {
         "query": {
@@ -173,7 +174,8 @@ class MemorySaveTool(Tool):
     name = "memory_save"
     description = (
         "Persist a durable fact or note into Filesystem Base Dir/memories. "
-        "Use this when the user explicitly asks to remember, save, or record something."
+        "Use this when the user explicitly asks to remember, save, or record something, "
+        "or when a turn reveals a durable fact, preference, project state, or follow-up worth keeping."
     )
     parameters = {
         "note": {

@@ -70,12 +70,16 @@ def _format_memory_tool_guidance(tool_names: list[str]) -> str | None:
 
     return (
         "Long-term memory lives under Filesystem Base Dir/memories, and its structured index lives in Filesystem Base Dir/memories/index.json.\n"
+        "For anything beyond brief small talk or a one-off factual answer, prefer to ground your response in relevant memory when it exists.\n"
+        "If retrieved memory is present, treat it as first-class context and use it before improvising from scratch.\n"
+        "If the current request looks like an ongoing person, project, preference, plan, or follow-up but retrieved memory seems thin, proactively consult memory tools before answering.\n"
         "For deliberate memory work, default to this flow: memory_index_search -> read or edit the actual memory files -> memory_index_save.\n"
         "Use memory_index_search to find relevant memory files before reading, editing, moving, or deleting them.\n"
         "When you deliberately edit a memory file with normal file tools, call memory_index_save afterward to keep the index in sync.\n"
         "If you already know the exact memory file path, you may read it directly, but still keep the index in sync after material changes.\n"
-        "Use memory_search when the user explicitly asks to inspect memory contents directly.\n"
-        "Use memory_save when the user explicitly asks you to remember or record a durable fact quickly.\n"
+        "Use memory_search when the user explicitly asks to inspect memory contents, or when you need extra memory context that was not already surfaced.\n"
+        "Use memory_save when the user explicitly asks you to remember something, or when this turn reveals a durable fact, preference, project state, commitment, or follow-up that should survive future conversations.\n"
+        "After you speak or complete an important action, deliberately save salient durable memory instead of assuming transcript logging alone is enough.\n"
         "Prefer memory index tools over manually editing index.json, and do not rewrite index.json with normal file tools."
     )
 

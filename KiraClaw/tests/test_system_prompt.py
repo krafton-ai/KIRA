@@ -85,6 +85,9 @@ def test_system_prompt_mentions_memory_index_first_flow_when_available() -> None
     )
 
     assert "default to this flow: memory_index_search -> read or edit the actual memory files -> memory_index_save" in prompt
+    assert "For anything beyond brief small talk or a one-off factual answer" in prompt
+    assert "If retrieved memory is present, treat it as first-class context" in prompt
+    assert "After you speak or complete an important action, deliberately save salient durable memory" in prompt
     assert "do not rewrite index.json with normal file tools" in prompt
 
 
