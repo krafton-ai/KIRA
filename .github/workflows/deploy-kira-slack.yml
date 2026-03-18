@@ -92,7 +92,7 @@ jobs:
           export NVM_DIR="$HOME/.nvm"
           [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
           cd ${{ env.CLAW_DESKTOP_DIR }}
-          npm run deploy:public:mac:skip-notarize
+          npm run deploy:public:mac
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
