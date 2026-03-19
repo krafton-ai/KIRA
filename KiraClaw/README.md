@@ -8,9 +8,9 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey)]()
 [![Bridge](https://img.shields.io/badge/migration-KIRA--Slack%20bridge-orange)](docs/migration-from-kira-slack.md)
 
-Agentic desktop runtime for KIRA.
+Local desktop AI Coworker runtime for KIRA.
 
-KiraClaw is the successor product line to `KIRA-Slack`. It keeps the local desktop product shape, but moves the runtime toward a more agentic model:
+KiraClaw is the successor product line to `KIRA-Slack`. It keeps the local desktop product shape, but rebuilds the runtime around a lighter core and a clearer agent model:
 
 - adapters are the outside ears and mouth
 - the core agent thinks, plans, and chooses tools
@@ -19,6 +19,8 @@ KiraClaw is the successor product line to `KIRA-Slack`. It keeps the local deskt
 - memory has both implicit runtime behavior and explicit index tools
 
 `KIRA-Slack` is now the legacy product line used only for bridge migration and auto-update replacement. New runtime work happens in `KiraClaw`.
+
+KiraClaw is a fresh start inspired in part by [OpenClaw](https://github.com/openclaw/openclaw): a local AI Coworker should stay practical, explicit, and easy to operate without turning into a giant platform.
 
 ---
 
@@ -38,19 +40,24 @@ KiraClaw is the successor product line to `KIRA-Slack`. It keeps the local deskt
 
 KiraClaw is a local AI agent runtime that combines:
 
-- a long-running local gateway
-- a desktop control plane
+- a lightweight core engine
+- a small local gateway around that engine
+- a desktop control plane for setup, runs, logs, and status
 - channel adapters for Slack, Telegram, and Discord
 - local memory, skills, schedules, and run logs
 
-It is closer to an agent runtime than to a simple chat wrapper.
+It is closer to a practical local AI Coworker runtime than to a chat wrapper or a large orchestration platform.
 
 The design goal is small and explicit:
 
-- `krim-sdk` is the external agent engine
-- `agentd` is the local gateway
-- `desktop` is the packaged shell for setup, status, runs, logs, and direct chat
-- schedules are the current automation surface
+- a lightweight core engine should stay easy to reason about
+- channels should behave like adapters, not separate agent silos
+- outward speech should be explicit through `speak`
+- memory should stay local, file-backed, and indexable
+- schedules should extend the same runtime instead of introducing a second automation system
+- logs should make runs observable without turning the product into a heavyweight control center
+
+You can start with either Claude or OpenAI by adding an API key in the desktop app, then configure other providers later if you need them.
 
 ---
 
@@ -64,9 +71,14 @@ The design goal is small and explicit:
 - channel integrations
 - local data handling
 
-`KRIM` proved the core loop can stay small.
+KiraClaw starts from a lightweight core engine and wraps it with a practical desktop harness. The point is not to add complexity for its own sake, but to keep a few strong concepts intact:
 
-KiraClaw combines those lessons without dragging the old multi-agent Slack-first structure forward.
+- one core runtime shared across Talk, channels, schedules, and logs
+- explicit speech instead of forcing every run to become a reply
+- local memory and skills that remain inspectable as files
+- a desktop surface that makes the runtime understandable without hiding it
+
+That keeps the product simple, but still leaves room for stronger agent ideas like diagnostics, pairing, or long-running process control.
 
 ---
 
@@ -110,10 +122,11 @@ See [migration-from-kira-slack.md](docs/migration-from-kira-slack.md).
 
 Optional:
 
+- Anthropic or OpenAI API key
 - Slack app credentials
 - Telegram bot token
 - Discord bot token
-- Anthropic / OpenAI / Vertex credentials depending on provider
+- Vertex credentials if you want that provider
 
 ### Run the daemon
 
@@ -169,6 +182,8 @@ KiraClaw no longer assumes that every run must directly produce a user-facing an
 - `speak`: explicit outward speech
 - `internal_summary`: internal run summary
 - `memory index`: stable metadata for memory lookup and updates
+
+The important part is the separation of concerns: the core engine stays small, while channels, memory, schedules, and desktop controls stay around it as a harness.
 
 ### Memory model
 

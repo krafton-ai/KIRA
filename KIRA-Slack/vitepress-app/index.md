@@ -1,38 +1,46 @@
 ---
 layout: home
 title: KiraClaw
-description: Install KiraClaw, the local agentic desktop runtime for chat, Slack, Telegram, Discord, skills, schedules, and run logs.
+description: Install KiraClaw, a local desktop AI Coworker runtime with a lightweight core engine, channel adapters, memory, skills, schedules, and run logs.
 
 hero:
   name: KiraClaw
-  text: Agentic Desktop Runtime
-  tagline: Local chat, Slack, Telegram, and Discord channels, workspace skills, schedules, and run logs in one desktop app.
+  text: Lightweight Local AI Coworker
+  tagline: A local desktop AI Coworker built on a lightweight core engine with channel adapters, workspace skills, schedules, and run logs.
   image:
     src: /images/screenshots/hero-kira-claw-new.png
     alt: KiraClaw
   actions:
     - theme: brand
       text: Download for macOS
-      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-arm64.dmg
+      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg
     - theme: alt
       text: Download for Windows
-      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-x64.exe
+      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe
     - theme: alt
       text: GitHub
       link: https://github.com/krafton-ai/KIRA/tree/main/KiraClaw
 
 features:
   - icon: 🧠
-    title: Agentic Runtime
-    details: The local engine thinks first, uses tools explicitly, and speaks outward through `speak` instead of treating every run as a forced reply.
+    title: Lightweight Core Engine
+    details: KiraClaw starts from a small local core engine and builds the desktop runtime around it instead of hiding behavior behind a large orchestration layer.
+
+  - icon: 🗣️
+    title: Explicit Speech
+    details: The runtime can think, use tools, stay silent, or speak outward through `speak` instead of forcing every run into a user-facing reply.
 
   - icon: 💬
-    title: Shared Core Across Surfaces
-    details: Talk, Slack, Telegram, Discord, schedules, memory, and skills all run on the same local daemon.
+    title: Channels as Adapters
+    details: Talk, Slack, Telegram, and Discord all sit on the same local runtime, so the product behaves like one agent with multiple ears and mouths.
 
   - icon: 🗂️
     title: Workspace-First
-    details: Skills live in your workspace, run logs stay local, and memory stays under your filesystem base directory.
+    details: Skills live in your workspace, logs stay local, and memory remains file-backed and indexable under your filesystem base directory.
+
+  - icon: 🤖
+    title: API Key And Start
+    details: Add your Claude or OpenAI API key in the desktop app and start immediately. Other provider paths can be configured later.
 
   - icon: 📅
     title: Schedules
@@ -46,6 +54,19 @@ features:
     title: Local by Default
     details: Settings, logs, and memory stay on your machine. KiraClaw is built as a local desktop control plane, not a hosted SaaS.
 ---
+
+## Core idea
+
+KiraClaw starts from a lightweight local core engine and adds only the surfaces that make an AI Coworker useful in practice:
+
+- a desktop harness for setup, visibility, and local control
+- channels as adapters instead of separate bot stacks
+- explicit outward speech through `speak`
+- local memory, skills, schedules, and logs that stay inspectable
+
+The result is intentionally simple. It is not trying to be a huge control plane, but it still keeps strong agent concepts visible.
+
+KiraClaw is also a fresh start inspired in part by [OpenClaw](https://github.com/openclaw/openclaw): keep the core lightweight, keep the runtime local, and keep the product understandable.
 
 ## What changed?
 
@@ -68,20 +89,10 @@ KiraClaw currently includes:
 - schedules for automation
 - run logs in the desktop UI
 
-## Demo
-
-| Search + PPTX | GitRepo + PDF | Web + Wiki |
-|:---:|:---:|:---:|
-| <video src="https://github.com/user-attachments/assets/284f9d0d-056c-42e9-8f1f-19873431ddba" width="240" controls></video> | <video src="https://github.com/user-attachments/assets/721bc704-8b1a-4673-829a-52309ae69601" width="240" controls></video> | <video src="https://github.com/user-attachments/assets/7329039a-fdad-4f4b-8f03-65402e4d6f6c" width="240" controls></video> |
-
-| Proactive + Thread | Email + Schedule | Proactive + Translate |
-|:---:|:---:|:---:|
-| <video src="https://github.com/user-attachments/assets/9ee1a520-507c-408a-a1d2-4a7a393385eb" width="240" controls></video> | <video src="https://github.com/user-attachments/assets/79959017-67c2-4109-98bd-8c1dbba2b34f" width="240" controls></video> | <video src="https://github.com/user-attachments/assets/c78768be-580e-42e8-a3d8-34eb5f0db6cb" width="240" controls></video> |
-
 ## Download
 
-- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-arm64.dmg)
-- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-x64.exe)
+- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg)
+- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe)
 
 If macOS warns about the app on first launch, use the steps in [Troubleshooting](/troubleshooting).
 

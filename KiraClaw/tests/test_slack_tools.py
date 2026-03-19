@@ -211,6 +211,43 @@ def test_slack_send_message_can_open_dm_from_user_name(tmp_path) -> None:
     assert client.messages == [{"channel": "D-U123", "text": "hello", "thread_ts": None}]
 
 
+def test_slack_send_message_can_open_dm_from_korean_honorific_name(tmp_path) -> None:
+    settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=tmp_path / "workspace",
+        home_mode="modern",
+        slack_enabled=True,
+        slack_bot_token="xoxb-token",
+    )
+    client = FakeSlackClient()
+    client.users_list = lambda **kwargs: {
+        "members": [
+            {
+                "id": "U777",
+                "name": "jiho",
+                "profile": {
+                    "display_name": "전지호",
+                    "real_name": "전지호",
+                    "display_name_normalized": "전지호",
+                    "real_name_normalized": "전지호",
+                },
+            }
+        ]
+    }
+    tools = {tool.name: tool for tool in build_slack_tools(settings, client_factory=lambda: client)}
+
+    result = json.loads(
+        tools["slack_send_message"].run(
+            channel_id="전지호님",
+            text="hello",
+        )
+    )
+
+    assert result["success"] is True
+    assert client.opened_dms == [{"users": "U777"}]
+    assert client.messages == [{"channel": "D-U777", "text": "hello", "thread_ts": None}]
+
+
 def test_slack_upload_file_reports_missing_path(tmp_path) -> None:
     settings = KiraClawSettings(
         data_dir=tmp_path / "data",

@@ -1,8 +1,15 @@
+import { h } from 'vue'
 import DefaultTheme from 'vitepress/theme'
+import HomeDemo from './components/HomeDemo.vue'
 import './custom.css'
 
 export default {
   extends: DefaultTheme,
+  Layout() {
+    return h(DefaultTheme.Layout, null, {
+      'home-features-before': () => h(HomeDemo)
+    })
+  },
   enhanceApp({ app, router }) {
     // Track download button clicks
     if (typeof window !== 'undefined') {

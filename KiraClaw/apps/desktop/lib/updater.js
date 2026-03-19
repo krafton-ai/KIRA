@@ -10,21 +10,42 @@ function setupAutoUpdater() {
     return;
   }
 
-  const fs = require("fs");
   const path = require("path");
   const { app, dialog, BrowserWindow } = require("electron");
+  const {
+    clearIncompatiblePendingUpdate,
+    getAppBundlePath,
+    isInApplicationsFolder,
+    readUpdaterCacheDirName,
+  } = require("./updater-helpers");
   if (!app.isPackaged) {
     return;
   }
 
   const updateConfigPath = path.join(process.resourcesPath, "app-update.yml");
+  const fs = require("fs");
   if (!fs.existsSync(updateConfigPath)) {
     return;
   }
+  const updaterCacheDir = path.join(
+    app.getPath("cache"),
+    readUpdaterCacheDirName(updateConfigPath, app.getName()),
+  );
+
+  const exePath = app.getPath("exe");
+  const bundlePath = getAppBundlePath(exePath);
+  log.info("Packaged app startup", {
+    version: app.getVersion(),
+    exePath,
+    bundlePath,
+    updateConfigPath,
+    updaterCacheDir,
+  });
 
   autoUpdater.logger = log;
   autoUpdater.logger.transports.file.level = "info";
   autoUpdater.logger.info(`Using packaged app-update.yml: ${updateConfigPath}`);
+  clearIncompatiblePendingUpdate(updaterCacheDir, app.getName(), autoUpdater.logger);
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
   app.on("before-quit-for-update", () => {
@@ -33,6 +54,22 @@ function setupAutoUpdater() {
   });
   let promptingForDownload = false;
   let promptingForRestart = false;
+  if (!isInApplicationsFolder(bundlePath, app.getPath("home"))) {
+    log.warn("Auto-update may be unreliable because the app is not running from Applications.", {
+      bundlePath,
+    });
+    const focusedWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
+    void dialog.showMessageBox(focusedWindow, {
+      type: "warning",
+      buttons: ["OK"],
+      defaultId: 0,
+      title: "Install Location",
+      message: "KiraClaw is not running from the Applications folder.",
+      detail: "Automatic updates are most reliable when KiraClaw.app is installed in /Applications. If a newly downloaded app still shows an older version, make sure you are reopening the app from /Applications and not another copy in Downloads or a mounted DMG.",
+    }).catch((error) => {
+      log.error("Install location warning dialog failed:", error);
+    });
+  }
 
   autoUpdater.on("checking-for-update", () => {
     log.info("Auto-update: checking for update");
@@ -104,7 +141,7 @@ function setupAutoUpdater() {
     log.error("Auto-update error:", error);
   });
 
-  autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+  autoUpdater.checkForUpdates().catch((error) => {
     log.error("Auto-update check failed:", error);
   });
 

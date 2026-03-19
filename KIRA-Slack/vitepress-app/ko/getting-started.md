@@ -4,10 +4,12 @@
 
 새 설치는 `KiraClaw` 기준으로 진행하세요.
 
+KiraClaw는 가벼운 로컬 코어 엔진에 작은 데스크톱 harness를 얹는 방향으로 설계되어 있고, 큰 제어 플랫폼보다는 로컬 AI Coworker에 더 가깝습니다.
+
 ## 1. 다운로드
 
-- macOS (Apple Silicon): [KiraClaw for macOS 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-arm64.dmg)
-- Windows: [KiraClaw for Windows 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-x64.exe)
+- macOS (Apple Silicon): [KiraClaw for macOS 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg)
+- Windows: [KiraClaw for Windows 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe)
 
 ## 2. 설치
 
@@ -46,7 +48,16 @@ KiraClaw는 다음을 위한 로컬 filesystem base directory를 사용합니다
 - `Schedules`
 - `Logs`
 
-## 5. 선택: 채널 연결
+## 5. API Key 추가
+
+`Settings`에서 아래 둘 중 하나만 넣으면 바로 시작할 수 있습니다.
+
+- Anthropic API key
+- OpenAI API key
+
+설계 배경을 짧게 말하면, KiraClaw는 [OpenClaw](https://github.com/openclaw/openclaw)에서 일부 영감을 받아 시작했지만 더 작고 로컬 중심인 제품 형태를 지향합니다.
+
+## 6. 선택: 채널 연결
 
 현재 채널은 다음을 지원합니다.
 
@@ -56,14 +67,14 @@ KiraClaw는 다음을 위한 로컬 filesystem base directory를 사용합니다
 
 채널 설정은 데스크톱 `Channels` 화면에서 합니다.
 
-## 6. Identity와 persona
+## 7. Identity와 persona
 
 `Settings > Identity`에서 다음을 설정합니다.
 
 - agent 이름
 - persona 줄글
 
-## 7. 런타임 확인
+## 8. 런타임 확인
 
 가장 쉬운 smoke test는:
 

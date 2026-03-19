@@ -4,10 +4,12 @@ This guide is intentionally short. The old `KIRA-Slack` setup surface is no long
 
 Use `KiraClaw` for fresh installs.
 
+KiraClaw is designed around a lightweight local core engine with a small desktop harness around it. It is meant to feel like a local AI Coworker, not a large control platform.
+
 ## 1. Download
 
-- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-arm64.dmg)
-- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.1.60-x64.exe)
+- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg)
+- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe)
 
 ## 2. Install
 
@@ -46,7 +48,18 @@ Inside the app, start with:
 - `Schedules`
 - `Logs`
 
-## 5. Optional: connect channels
+## 5. Add an API key
+
+Open `Settings` and add either:
+
+- an Anthropic API key
+- or an OpenAI API key
+
+That is enough to start using Talk right away.
+
+If you want the design context, KiraClaw is a fresh start inspired in part by [OpenClaw](https://github.com/openclaw/openclaw), but with a smaller and more local product shape.
+
+## 6. Optional: connect channels
 
 The app currently supports:
 
@@ -56,7 +69,7 @@ The app currently supports:
 
 Channel settings live in the desktop `Channels` screen.
 
-## 6. Identity and persona
+## 7. Identity and persona
 
 Set:
 
@@ -65,7 +78,7 @@ Set:
 
 in `Settings > Identity`.
 
-## 7. Verify the runtime
+## 8. Verify the runtime
 
 The simplest smoke test is:
 

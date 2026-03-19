@@ -18,11 +18,16 @@ from kiraclaw_agentd.settings import KiraClawSettings
 
 def test_clean_prompt_text_strips_app_mentions_and_normalizes_whitespace() -> None:
     text = "  <@U123ABC>   please   summarize   this thread  "
-    assert _clean_prompt_text(text, mention=True, agent_name="세나") == "세나 please summarize this thread"
+    assert _clean_prompt_text(text, "U123ABC", mention=True, agent_name="세나") == "세나 please summarize this thread"
 
 
 def test_clean_prompt_text_keeps_dm_text_intact() -> None:
-    assert _clean_prompt_text("  hello   from   dm  ", mention=False) == "hello from dm"
+    assert _clean_prompt_text("  hello   from   dm  ", None, mention=False) == "hello from dm"
+
+
+def test_clean_prompt_text_keeps_other_user_mentions_intact() -> None:
+    text = " <@UBOT>   <@U456DEF>  에게   보내줘 "
+    assert _clean_prompt_text(text, "UBOT", mention=True, agent_name="세나") == "세나 <@U456DEF> 에게 보내줘"
 
 
 def test_is_human_message_event_only_accepts_human_messages() -> None:
@@ -259,6 +264,50 @@ def test_slack_messages_from_same_user_are_debounced_and_merged(tmp_path) -> Non
         assert len(session_manager.calls) == 1
         assert session_manager.calls[0]["prompt"] == "first\nsecond"
         assert client.sent_messages == [{"channel": "D1", "text": "ok", "thread_ts": None}]
+
+    asyncio.run(scenario())
+
+
+def test_schedule_event_resolves_tagged_user_name_into_prompt(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = SlackGateway(session_manager, settings, debounce_seconds=0.05)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return None
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        async def fake_users_info(user: str) -> dict:
+            names = {
+                "U1": {"display_name": "Jiho Jeon"},
+                "U2": {"display_name": "Gisang Lee (이기상) [KAI]"},
+            }
+            return {"ok": True, "user": {"profile": names.get(user, {}), "name": user}}
+
+        client.users_info = fake_users_info  # type: ignore[method-assign]
+
+        event = {
+            "channel": "D1",
+            "channel_type": "im",
+            "ts": "101.0",
+            "user": "U1",
+            "text": "<@UBOT> <@U2> 님한테 전달해줘",
+        }
+
+        await gateway._schedule_event(event, client, logging.getLogger("test-slack"), mention=True)
+        await asyncio.sleep(0.12)
+
+        assert len(session_manager.calls) == 1
+        assert session_manager.calls[0]["prompt"] == "KIRA @Gisang Lee (이기상) [KAI] 님한테 전달해줘"
 
     asyncio.run(scenario())
 

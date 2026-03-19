@@ -18,6 +18,7 @@ from kiraclaw_agentd.tool_event_summary import append_tool_summary
 
 logger = logging.getLogger(__name__)
 _APP_MENTION_RE = re.compile(r"<@[^>]+>")
+_USER_MENTION_RE = re.compile(r"<@([A-Z0-9]+)>")
 _CHANNEL_DEBOUNCE_SECONDS = 5.0
 
 
@@ -57,10 +58,16 @@ def _is_authorized_user_name(user_name: str, allowed_names: str) -> bool:
     return False
 
 
-def _clean_prompt_text(text: str, *, mention: bool, agent_name: str | None = None) -> str:
-    if mention:
+def _clean_prompt_text(
+    text: str,
+    bot_user_id: str | None,
+    *,
+    mention: bool,
+    agent_name: str | None = None,
+) -> str:
+    if mention and bot_user_id:
         replacement = f" {agent_name.strip()} " if agent_name and agent_name.strip() else " KiraClaw "
-        text = _APP_MENTION_RE.sub(replacement, text)
+        text = re.sub(fr"<@{re.escape(bot_user_id)}>", replacement, text)
     return _normalize_text(text)
 
 
@@ -195,9 +202,16 @@ def _format_file_prompt(files: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def _build_event_prompt(event: dict[str, Any], *, mention: bool, agent_name: str | None = None) -> str:
+def _build_event_prompt(
+    event: dict[str, Any],
+    *,
+    mention: bool,
+    agent_name: str | None = None,
+    bot_user_id: str | None = None,
+) -> str:
     text = _clean_prompt_text(
         str(event.get("text") or ""),
+        bot_user_id,
         mention=mention,
         agent_name=agent_name,
     )
@@ -396,10 +410,12 @@ class SlackGateway:
         if not _is_authorized_user_name(user_name, self.settings.slack_allowed_names):
             logger.info("Ignoring unauthorized Slack user: user=%s name=%s", user, user_name)
             return
+        prompt_text = await self._resolve_user_mentions_in_text(client, str(event.get("text") or ""))
         prompt = _build_event_prompt(
-            event,
+            {**event, "text": prompt_text},
             mention=mention,
             agent_name=self.settings.agent_name,
+            bot_user_id=self.identity.get("user_id"),
         )
         if not prompt:
             return
@@ -523,13 +539,18 @@ class SlackGateway:
         ]
         for message in messages:
             speaker = await self._speaker_for_message(client, message)
+            resolved_text = await self._resolve_user_mentions_in_text(
+                client,
+                _strip_bot_mention(message.get("text", ""), self.identity.get("user_id")),
+            )
             cleaned = _build_event_prompt(
                 {
                     **message,
-                    "text": _strip_bot_mention(message.get("text", ""), self.identity.get("user_id")),
+                    "text": resolved_text,
                 },
                 mention=False,
                 agent_name=self.settings.agent_name,
+                bot_user_id=self.identity.get("user_id"),
             )
             if not cleaned:
                 continue
@@ -594,3 +615,32 @@ class SlackGateway:
             return self.settings.agent_name
 
         return "Slack"
+
+    async def _resolve_user_mentions_in_text(self, client, text: str) -> str:
+        if "<@" not in text:
+            return text
+
+        bot_user_id = self.identity.get("user_id")
+        mentioned_user_ids = {
+            match.group(1)
+            for match in _USER_MENTION_RE.finditer(text)
+            if match.group(1) != bot_user_id
+        }
+        if not mentioned_user_ids:
+            return text
+
+        resolved_names = {
+            user_id: await self._get_user_name(client, user_id)
+            for user_id in mentioned_user_ids
+        }
+
+        def replace(match: re.Match[str]) -> str:
+            user_id = match.group(1)
+            if user_id == bot_user_id:
+                return match.group(0)
+            name = resolved_names.get(user_id)
+            if not name:
+                return match.group(0)
+            return f"@{name}"
+
+        return _USER_MENTION_RE.sub(replace, text)

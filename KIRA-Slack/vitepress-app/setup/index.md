@@ -1,10 +1,12 @@
 # Setup Guide
 
-If you've completed the basic setup ([Slack connection](/getting-started#%EF%B8%8F-step-4-configure-kira-app)), you can now enable additional features.
+If you already installed KiraClaw, added an API key, and completed the basic setup in [Getting Started](/getting-started), you can now enable additional features.
 
 ::: tip Complete Basic Setup First!
 If you haven't done the basic setup yet, please refer to the [Getting Started guide](/getting-started) first.
 :::
+
+KiraClaw is designed as a local AI Coworker with a lightweight core engine and a small desktop harness. This setup guide is about enabling optional capabilities on top of that base.
 
 ## 📋 Configuration Structure
 

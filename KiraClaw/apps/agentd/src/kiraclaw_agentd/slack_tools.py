@@ -79,6 +79,24 @@ def _normalize_lookup_key(value: str) -> str:
     return re.sub(r"[\s._-]+", "", value.strip().lower())
 
 
+def _lookup_variants(value: str) -> list[str]:
+    base = value.strip()
+    if not base:
+        return []
+
+    variants = {
+        base,
+        base.lstrip("@#"),
+    }
+
+    trimmed = base.lstrip("@#").strip()
+    for suffix in ("님", "씨", "선생님"):
+        if trimmed.endswith(suffix):
+            variants.add(trimmed[: -len(suffix)].strip())
+
+    return [variant for variant in variants if variant.strip()]
+
+
 def _extract_channel_or_user_id(value: str) -> str | None:
     stripped = value.strip()
     channel_match = re.match(r"^<#([CDG][A-Z0-9]+)(?:\|[^>]+)?>$", stripped)
@@ -123,19 +141,21 @@ def _iter_users(client: Any) -> list[dict[str, Any]]:
 
 
 def _find_channel_id_by_name(client: Any, channel_name: str) -> str | None:
-    lookup = _normalize_lookup_key(channel_name.lstrip("#"))
-    if not lookup:
+    lookups = [_normalize_lookup_key(variant) for variant in _lookup_variants(channel_name)]
+    lookups = [lookup for lookup in lookups if lookup]
+    if not lookups:
         return None
     for channel in _iter_conversations(client):
         name = str(channel.get("name", "")).strip()
-        if name and _normalize_lookup_key(name) == lookup:
+        if name and _normalize_lookup_key(name) in lookups:
             return str(channel.get("id", "")) or None
     return None
 
 
 def _find_user_id_by_name(client: Any, user_name: str) -> str | None:
-    lookup = _normalize_lookup_key(user_name.lstrip("@"))
-    if not lookup:
+    lookups = [_normalize_lookup_key(variant) for variant in _lookup_variants(user_name)]
+    lookups = [lookup for lookup in lookups if lookup]
+    if not lookups:
         return None
     for member in _iter_users(client):
         if member.get("deleted"):
@@ -148,7 +168,7 @@ def _find_user_id_by_name(client: Any, user_name: str) -> str | None:
             str(profile.get("display_name_normalized", "")),
             str(profile.get("real_name_normalized", "")),
         ]
-        if any(candidate and _normalize_lookup_key(candidate) == lookup for candidate in candidates):
+        if any(candidate and _normalize_lookup_key(candidate) in lookups for candidate in candidates):
             return str(member.get("id", "")) or None
     return None
 

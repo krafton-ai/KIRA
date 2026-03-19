@@ -1,10 +1,12 @@
 # 설정 가이드
 
-KIRA의 기본 설정([Slack 연동](/ko/getting-started#%E2%9A%99%EF%B8%8F-3%EB%8B%A8%EA%B3%84-kira-%EC%95%B1-%EC%84%A4%EC%A0%95))을 완료하셨다면, 이제 추가 기능을 활성화할 수 있습니다.
+KiraClaw 설치와 API key 입력 등 [시작하기](/ko/getting-started)의 기본 설정을 마쳤다면, 이제 추가 기능을 활성화할 수 있습니다.
 
 ::: tip 기본 설정 먼저!
 아직 기본 설정을 하지 않으셨다면 [시작하기 가이드](/ko/getting-started)를 먼저 참고하세요.
 :::
+
+KiraClaw는 가벼운 코어 엔진과 작은 데스크톱 harness를 바탕으로 동작하는 로컬 AI Coworker입니다. 이 문서는 그 위에 선택적 기능을 얹는 방법을 설명합니다.
 
 ## 📋 설정 구조
 
