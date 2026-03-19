@@ -1,5 +1,7 @@
 # KiraClaw
 
+<img src="./apps/desktop/assets/kira_claw_human.png" alt="KiraClaw" width="320" />
+
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-green)](https://nodejs.org/)
 [![Electron](https://img.shields.io/badge/electron-39.x-9feaf9)](https://www.electronjs.org/)
