@@ -75,6 +75,7 @@ class MemoryStore:
                     "summary": entry.summary,
                     "updated_at": entry.updated_at,
                     "tags": entry.tags,
+                    "memory_kind": entry.memory_kind,
                     "content": _clip_memory_body(text),
                 }
             )
@@ -105,6 +106,7 @@ class MemoryStore:
                     "user_id": entry.user_id,
                     "user_name": entry.user_name,
                     "channel_id": entry.channel_id,
+                    "memory_kind": entry.memory_kind,
                     "exists": file_path.exists(),
                 }
             )
@@ -116,8 +118,10 @@ class MemoryStore:
         note = self._build_note(request, now)
         entries = self._load_index()
         saved_paths: list[str] = []
+        memory_kind = (request.memory_kind or "semantic").strip().lower() or "semantic"
+        summary = _clip_inline(request.summary.strip() or self._default_summary(request), 220)
 
-        for target in self._target_files_for_session(request.session_id, request.metadata):
+        for target in self._target_files_for_request(request.session_id, request.metadata, memory_kind):
             relative_path = target["path"]
             file_path = self.memory_dir / relative_path
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -135,6 +139,7 @@ class MemoryStore:
                 "user_name": str(request.metadata.get("user_name", "")),
                 "channel_id": str(request.metadata.get("channel", "")),
                 "tags": tags,
+                "memory_kind": memory_kind,
             }
             self._append_note(file_path, metadata, note)
             entries = self._upsert_index_entry(
@@ -143,10 +148,7 @@ class MemoryStore:
                     path=relative_path,
                     title=title,
                     category=category,
-                    summary=_clip_inline(
-                        f"User: {request.prompt} | Assistant: {request.response}",
-                        220,
-                    ),
+                    summary=summary,
                     updated_at=now,
                     tags=tags,
                     source=str(request.metadata.get("source", "")),
@@ -154,6 +156,7 @@ class MemoryStore:
                     user_id=str(request.metadata.get("user", "")),
                     user_name=str(request.metadata.get("user_name", "")),
                     channel_id=str(request.metadata.get("channel", "")),
+                    memory_kind=memory_kind,
                 ),
             )
 
@@ -177,7 +180,7 @@ class MemoryStore:
         entries = self._load_index()
         saved_paths: list[str] = []
 
-        for target in self._target_files_for_session(session_id, metadata):
+        for target in self._semantic_targets(session_id, metadata):
             relative_path = target["path"]
             file_path = self.memory_dir / relative_path
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -192,6 +195,7 @@ class MemoryStore:
                 "user_name": str(metadata.get("user_name", "")),
                 "channel_id": str(metadata.get("channel", "")),
                 "tags": target["tags"],
+                "memory_kind": "semantic",
             }
             self._append_note(file_path, document_metadata, self._build_manual_note(saved_note, now))
             entries = self._upsert_index_entry(
@@ -208,6 +212,7 @@ class MemoryStore:
                     user_id=str(metadata.get("user", "")),
                     user_name=str(metadata.get("user_name", "")),
                     channel_id=str(metadata.get("channel", "")),
+                    memory_kind="semantic",
                 ),
             )
 
@@ -260,6 +265,7 @@ class MemoryStore:
             user_id=str(metadata.get("user", current.user_id if current else "")),
             user_name=str(metadata.get("user_name", current.user_name if current else "")),
             channel_id=str(metadata.get("channel", current.channel_id if current else "")),
+            memory_kind=str(metadata.get("memory_kind", current.memory_kind if current else "semantic")),
         )
         entries = self._upsert_index_entry(entries, final_entry)
         self._write_index(entries)
@@ -276,6 +282,7 @@ class MemoryStore:
             "user_id": final_entry.user_id,
             "user_name": final_entry.user_name,
             "channel_id": final_entry.channel_id,
+            "memory_kind": final_entry.memory_kind,
         }
 
     def _select_entries(
@@ -371,7 +378,17 @@ class MemoryStore:
         scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
         return [entry for _, entry in scored]
 
-    def _target_files_for_session(self, session_id: str, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    def _target_files_for_request(
+        self,
+        session_id: str,
+        metadata: dict[str, Any],
+        memory_kind: str,
+    ) -> list[dict[str, Any]]:
+        if memory_kind == "episodic":
+            return [self._session_target(session_id, metadata)]
+        return self._semantic_targets(session_id, metadata)
+
+    def _semantic_targets(self, session_id: str, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         targets: list[dict[str, Any]] = []
 
         user_name = str(metadata.get("user_name", "")).strip()
@@ -417,16 +434,18 @@ class MemoryStore:
                 }
             )
 
-        session_stem = _slugify(session_id) or "session"
-        targets.append(
-            {
-                "path": f"misc/{session_stem}.md",
-                "title": f"Session Memory: {session_id}",
-                "category": "misc",
-                "tags": ["session", str(metadata.get("source", "local")) or "local"],
-            }
-        )
+        if not targets:
+            targets.append(self._session_target(session_id, metadata))
         return targets
+
+    def _session_target(self, session_id: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        session_stem = _slugify(session_id) or "session"
+        return {
+            "path": f"misc/{session_stem}.md",
+            "title": f"Session Memory: {session_id}",
+            "category": "misc",
+            "tags": ["session", str(metadata.get("source", "local")) or "local"],
+        }
 
     def _append_note(self, file_path: Path, metadata: dict[str, Any], note: str) -> None:
         frontmatter, body = self._read_document(file_path)
@@ -459,16 +478,27 @@ class MemoryStore:
         return frontmatter, body
 
     def _build_note(self, request: MemoryWriteRequest, created_at: str) -> str:
-        summary_prompt = _clip_inline(request.prompt, 280)
-        summary_response = _clip_inline(request.response, 520)
-        return (
-            f"### {created_at}\n"
-            f"- User: {summary_prompt}\n"
-            f"- {self.agent_name}: {summary_response}"
+        memory_kind = (request.memory_kind or "semantic").strip().lower() or "semantic"
+        if memory_kind == "episodic":
+            episode_summary = _clip_inline(
+                request.summary.strip() or self._default_summary(request),
+                520,
+            )
+            return f"### {created_at}\n- Episode: {episode_summary}"
+
+        semantic_summary = _clip_inline(
+            request.summary.strip() or request.response or self._default_summary(request),
+            520,
         )
+        return f"### {created_at}\n- Fact: {semantic_summary}"
 
     def _build_manual_note(self, note: str, created_at: str) -> str:
         return f"### {created_at}\n- Note: {_clip_inline(note, 600)}"
+
+    def _default_summary(self, request: MemoryWriteRequest) -> str:
+        prompt = _clip_inline(request.prompt, 180)
+        response = _clip_inline(request.response, 260)
+        return f"User asked: {prompt} | Outcome: {response}"
 
     def _load_index(self) -> list[MemoryIndexEntry]:
         if not self.index_file.exists():

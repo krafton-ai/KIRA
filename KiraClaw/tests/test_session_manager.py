@@ -402,6 +402,7 @@ def test_session_manager_saves_explicit_memory_request(tmp_path) -> None:
 
         assert len(saved_requests) == 1
         assert saved_requests[0].response == "기억해둘게. 앞으로 보고서는 PDF로 줄게."
+        assert saved_requests[0].memory_kind == "semantic"
 
     asyncio.run(scenario())
 
@@ -439,5 +440,43 @@ def test_session_manager_saves_toolful_run_even_without_memory_words(tmp_path) -
         )
 
         assert len(saved_requests) == 1
+        assert saved_requests[0].memory_kind == "semantic"
+        assert "Confluence 연결" in saved_requests[0].summary
+
+    asyncio.run(scenario())
+
+
+def test_session_manager_skips_capability_query_memory_save(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        saved_requests = []
+
+        async def on_record_complete(request) -> None:
+            saved_requests.append(request)
+
+        manager = SessionManager(
+            StaticResultEngine(
+                settings,
+                RunResult(
+                    final_response="응, 가능해. 여기서는 perplexity_ask 툴을 쓸 수 있어.",
+                    streamed_text="",
+                    spoken_messages=["응, 가능해. 여기서는 perplexity_ask 툴을 쓸 수 있어."],
+                ),
+            ),
+            on_record_complete=on_record_complete,
+        )
+
+        await manager.run(
+            "slack:dm:D123",
+            "퍼플렉시티 사용가능해?",
+            metadata={"source": "slack-dm", "user": "U123", "channel": "D123"},
+        )
+
+        assert saved_requests == []
 
     asyncio.run(scenario())

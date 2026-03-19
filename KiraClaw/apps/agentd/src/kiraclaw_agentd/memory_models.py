@@ -11,6 +11,8 @@ class MemoryWriteRequest:
     response: str
     created_at: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    memory_kind: str = "semantic"
+    summary: str = ""
 
 
 @dataclass
@@ -26,6 +28,7 @@ class MemoryIndexEntry:
     user_id: str = ""
     user_name: str = ""
     channel_id: str = ""
+    memory_kind: str = "semantic"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -44,4 +47,5 @@ class MemoryIndexEntry:
             user_id=str(value.get("user_id", "")),
             user_name=str(value.get("user_name", "")),
             channel_id=str(value.get("channel_id", "")),
+            memory_kind=str(value.get("memory_kind", "semantic") or "semantic"),
         )

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 from kiraclaw_agentd.mcp_runtime import (
     McpRuntime,
-    TIME_MCP_COMMAND,
+    _resolve_npx_binary,
     build_mcp_server_configs,
 )
 from kiraclaw_agentd.settings import KiraClawSettings
@@ -49,7 +50,7 @@ def test_mcp_runtime_builds_time_server_config(tmp_path) -> None:
 
     assert len(configs) == 1
     assert configs[0].name == "time"
-    assert configs[0].command == TIME_MCP_COMMAND
+    assert configs[0].command[-1] == "@theo.foobar/mcp-time"
 
 
 def test_mcp_runtime_builds_files_and_scheduler_configs(tmp_path) -> None:
@@ -134,27 +135,30 @@ def test_mcp_runtime_builds_external_npm_configs(tmp_path) -> None:
     configs = build_mcp_server_configs(settings)
 
     assert [config.name for config in configs] == ["perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright", "docs"]
-    assert configs[0].env == {"PERPLEXITY_API_KEY": "perplexity-key"}
+    assert configs[0].env is not None
+    assert configs[0].env["PERPLEXITY_API_KEY"] == "perplexity-key"
+    assert "PATH" in configs[0].env
     assert configs[0].wire_format == "line"
+    assert configs[1].env is not None
     assert configs[1].env["GITLAB_API_URL"] == "https://gitlab.com/api/v4"
     assert configs[1].wire_format == "line"
-    assert configs[2].env == {
-        "TENANT_ID": "tenant-id",
-        "CLIENT_ID": "client-id",
-        "USE_INTERACTIVE": "true",
-    }
+    assert configs[2].env is not None
+    assert configs[2].env["TENANT_ID"] == "tenant-id"
+    assert configs[2].env["CLIENT_ID"] == "client-id"
+    assert configs[2].env["USE_INTERACTIVE"] == "true"
     assert configs[2].wire_format == "line"
     assert configs[3].command[-2:] == ["--resource", "https://acme.atlassian.net/"]
-    assert configs[4].env == {
-        "SERVER": "https://tableau.example.com",
-        "SITE_NAME": "craft",
-        "PAT_NAME": "pat-name",
-        "PAT_VALUE": "pat-value",
-    }
-    assert configs[5].command[:5] == ["npx", "-y", "@playwright/mcp@latest", "--browser", "chrome"]
+    assert configs[4].env is not None
+    assert configs[4].env["SERVER"] == "https://tableau.example.com"
+    assert configs[4].env["SITE_NAME"] == "craft"
+    assert configs[4].env["PAT_NAME"] == "pat-name"
+    assert configs[4].env["PAT_VALUE"] == "pat-value"
+    assert "@playwright/mcp@latest" in configs[5].command
+    assert "--browser" in configs[5].command
+    assert "chrome" in configs[5].command
     assert "--user-data-dir" in configs[5].command
     assert "--output-dir" in configs[5].command
-    assert configs[6].command == ["npx", "-y", "mcp-remote", "https://example.com/mcp"]
+    assert configs[6].command[-2:] == ["mcp-remote", "https://example.com/mcp"]
     assert configs[6].wire_format == "line"
 
 
@@ -248,3 +252,60 @@ def test_mcp_runtime_start_loads_all_configs(tmp_path, monkeypatch) -> None:
     assert runtime.tool_names == ["perplexity_tool", "gitlab_tool", "ms365_tool", "atlassian_tool", "playwright_tool", "docs_tool"]
 
     asyncio.run(runtime.stop())
+
+
+def test_resolve_npx_binary_finds_nvm_install(tmp_path, monkeypatch) -> None:
+    nvm_dir = tmp_path / ".nvm" / "versions" / "node" / "v22.17.1" / "bin"
+    nvm_dir.mkdir(parents=True)
+    npx_path = nvm_dir / "npx"
+    npx_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("kiraclaw_agentd.mcp_runtime.shutil.which", lambda name: None)
+    monkeypatch.setattr("kiraclaw_agentd.mcp_runtime.Path.home", lambda: tmp_path)
+
+    assert _resolve_npx_binary() == str(npx_path)
+
+
+def test_resolve_npx_binary_finds_windows_install(tmp_path, monkeypatch) -> None:
+    program_files = tmp_path / "Program Files"
+    npx_path = program_files / "nodejs" / "npx.cmd"
+    npx_path.parent.mkdir(parents=True)
+    npx_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("kiraclaw_agentd.mcp_runtime.shutil.which", lambda name: None)
+    monkeypatch.setattr("kiraclaw_agentd.mcp_runtime._running_on_windows", lambda: True)
+    monkeypatch.setenv("ProgramFiles", str(program_files))
+    monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "Program Files (x86)"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+    monkeypatch.setattr("kiraclaw_agentd.mcp_runtime.Path.home", lambda: tmp_path)
+
+    assert _resolve_npx_binary() == str(npx_path)
+
+
+def test_mcp_runtime_prefixes_path_for_resolved_npx(tmp_path, monkeypatch) -> None:
+    npx_path = tmp_path / "node" / "bin" / "npx"
+    npx_path.parent.mkdir(parents=True)
+    npx_path.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr("kiraclaw_agentd.mcp_runtime._resolve_npx_binary", lambda: str(npx_path))
+
+    settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=tmp_path / "workspace",
+        home_mode="modern",
+        slack_enabled=False,
+        mcp_enabled=True,
+        mcp_time_enabled=True,
+        mcp_files_enabled=False,
+        mcp_scheduler_enabled=False,
+        mcp_context7_enabled=False,
+        mcp_arxiv_enabled=False,
+        mcp_youtube_info_enabled=False,
+    )
+
+    configs = build_mcp_server_configs(settings)
+
+    assert configs[0].command[0] == str(npx_path)
+    assert configs[0].env is not None
+    assert configs[0].env["PATH"].split(os.pathsep)[0] == str(npx_path.parent)

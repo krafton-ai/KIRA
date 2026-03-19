@@ -241,6 +241,14 @@ function createDaemonController({
     }
   }
 
+  function withPythonUtf8(env) {
+    return {
+      ...env,
+      PYTHONUTF8: "1",
+      PYTHONIOENCODING: "utf-8",
+    };
+  }
+
   function installUv() {
     const installConfig = getUvInstallCommand();
     emit("info", "uv is missing. Installing uv automatically...");
@@ -307,7 +315,7 @@ function createDaemonController({
         command: daemonBin,
         args: [],
         cwd: appRoot,
-        env: process.env,
+        env: withPythonUtf8(process.env),
       };
     }
 
@@ -344,11 +352,11 @@ function createDaemonController({
       command: uvPath,
       args: ["run", "kiraclaw-agentd"],
       cwd: appRoot,
-      env: {
+      env: withPythonUtf8({
         ...process.env,
         APP_ENV: "production",
         UV_PROJECT_ENVIRONMENT: runtimeEnvDir,
-      },
+      }),
     };
   }
 
@@ -426,11 +434,11 @@ function createDaemonController({
 
     emit("info", "Refreshing KiraClaw Python runtime dependencies...");
 
-    const syncEnv = {
+    const syncEnv = withPythonUtf8({
       ...process.env,
       APP_ENV: "production",
       UV_PROJECT_ENVIRONMENT: runtimeEnvDir,
-    };
+    });
 
     try {
       await runUvSync(uvPath, syncEnv);

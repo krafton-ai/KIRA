@@ -31,6 +31,10 @@ _DURABLE_SIGNAL_PATTERNS = [
     r"\b(?:prefer|preference|like|dislike|plan|planned|decision|decided|project|follow[- ]?up|deadline|schedule|status|issue|setup|token|credential|workspace|path|channel|install|version)\b",
     r"(?:선호|좋아하|싫어하|계획|결정|프로젝트|후속|마감|일정|상태|이슈|설정|토큰|자격증명|워크스페이스|경로|채널|설치|버전)",
 ]
+_CAPABILITY_QUERY_PATTERNS = [
+    r"\b(?:what tools|what can you do|what mcp|available|can you use|supported|what integrations?)\b",
+    r"(?:뭐 할 수|무슨 툴|무슨 mcp|사용가능|가능해|지원해|연동돼)",
+]
 
 
 def _matches_any_pattern(text: str, patterns: list[str]) -> bool:
@@ -55,6 +59,8 @@ def _should_auto_save(record: "RunRecord", response_text: str) -> bool:
         return True
     if tool_events:
         return True
+    if _matches_any_pattern(prompt, _CAPABILITY_QUERY_PATTERNS):
+        return False
 
     combined_length = len(combined)
     if combined_length <= 120 and _matches_any_pattern(combined, _SMALL_TALK_PATTERNS):
@@ -67,6 +73,34 @@ def _should_auto_save(record: "RunRecord", response_text: str) -> bool:
         return True
 
     return False
+
+
+def _classify_auto_memory(record: "RunRecord", response_text: str) -> tuple[str, str] | None:
+    if not _should_auto_save(record, response_text):
+        return None
+
+    prompt = " ".join(record.prompt.strip().split())
+    response = " ".join(response_text.strip().split())
+    combined = f"{prompt}\n{response}"
+    result = record.result
+    tool_events = list(result.tool_events) if result else []
+
+    if _matches_any_pattern(combined, _EXPLICIT_MEMORY_PATTERNS):
+        return "semantic", _clip_auto_memory_text(response or prompt, 320)
+
+    if _matches_any_pattern(combined, _DURABLE_SIGNAL_PATTERNS):
+        return "semantic", _clip_auto_memory_text(response or prompt, 320)
+
+    if tool_events:
+        return "episodic", _clip_auto_memory_text(
+            f"Handled '{prompt}' and completed tool-backed work. Outcome: {response}",
+            420,
+        )
+
+    return "episodic", _clip_auto_memory_text(
+        f"Handled '{prompt}'. Outcome: {response}",
+        420,
+    )
 
 
 def utc_now() -> str:
@@ -327,14 +361,18 @@ class SessionManager:
         response_text = _external_response_text(record)
         if not response_text.strip():
             return
-        if not _should_auto_save(record, response_text):
+        classified = _classify_auto_memory(record, response_text)
+        if classified is None:
             return
+        memory_kind, summary = classified
         request = MemoryWriteRequest(
             session_id=record.session_id,
             prompt=record.prompt,
             response=response_text,
             created_at=record.finished_at or record.created_at,
             metadata=record.metadata,
+            memory_kind=memory_kind,
+            summary=summary,
         )
         try:
             maybe_result = self.on_record_complete(request)
@@ -434,3 +472,10 @@ def _clip_conversation_text(text: str) -> str:
     if len(stripped) <= _CONVERSATION_TEXT_CHAR_LIMIT:
         return stripped
     return stripped[: _CONVERSATION_TEXT_CHAR_LIMIT - 1].rstrip() + "…"
+
+
+def _clip_auto_memory_text(text: str, limit: int) -> str:
+    stripped = " ".join(text.strip().split())
+    if len(stripped) <= limit:
+        return stripped
+    return stripped[: limit - 1].rstrip() + "…"

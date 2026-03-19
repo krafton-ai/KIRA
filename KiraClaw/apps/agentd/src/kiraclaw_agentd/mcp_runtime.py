@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import shutil
 import sys
 import threading
 from pathlib import Path
@@ -17,18 +19,8 @@ _MODULE_DIR = Path(__file__).resolve().parent
 DEFAULT_MCP_SERVER_START_TIMEOUT = 12.0
 EXTERNAL_MCP_SERVER_START_TIMEOUT = 60.0
 PLAYWRIGHT_MCP_SERVER_START_TIMEOUT = 90.0
-TIME_MCP_COMMAND = ["npx", "-y", "@theo.foobar/mcp-time"]
 FILES_MCP_COMMAND = [sys.executable, str(_MODULE_DIR / "files_mcp_server.py")]
 SCHEDULER_MCP_COMMAND = [sys.executable, str(_MODULE_DIR / "scheduler_mcp_server.py")]
-CONTEXT7_MCP_COMMAND = ["npx", "-y", "@upstash/context7-mcp"]
-ARXIV_MCP_COMMAND = ["npx", "-y", "@langgpt/arxiv-paper-mcp@latest"]
-YOUTUBE_INFO_MCP_COMMAND = ["npx", "-y", "@limecooler/yt-info-mcp"]
-PERPLEXITY_MCP_COMMAND = ["npx", "-y", "server-perplexity-ask"]
-GITLAB_MCP_COMMAND = ["npx", "-y", "@zereight/mcp-gitlab"]
-MS365_MCP_COMMAND = ["npx", "-y", "@batteryho/lokka-cached"]
-ATLASSIAN_MCP_COMMAND = ["npx", "-y", "mcp-remote", "https://mcp.atlassian.com/v1/sse"]
-TABLEAU_MCP_COMMAND = ["npx", "-y", "@tableau/mcp-server@latest"]
-PLAYWRIGHT_MCP_COMMAND = ["npx", "-y", "@playwright/mcp@latest"]
 REMOTE_MCP_NAME_PATTERN = re.compile(r"^[a-z0-9-]+$")
 
 
@@ -77,59 +69,119 @@ def _parse_remote_mcp_servers(raw: str) -> list[dict[str, str]]:
     return rows
 
 
+def _resolve_npx_binary() -> str | None:
+    direct = shutil.which("npx") or shutil.which("npx.cmd")
+    if direct:
+        return direct
+
+    candidates: list[Path] = []
+    if _running_on_windows():
+        candidates.extend([
+            Path(os.environ.get("ProgramFiles", "")) / "nodejs" / "npx.cmd",
+            Path(os.environ.get("ProgramFiles(x86)", "")) / "nodejs" / "npx.cmd",
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "nodejs" / "npx.cmd",
+            Path(os.environ.get("APPDATA", "")) / "npm" / "npx.cmd",
+            Path.home() / "AppData" / "Roaming" / "npm" / "npx.cmd",
+        ])
+    else:
+        candidates.extend([
+            Path("/opt/homebrew/bin/npx"),
+            Path("/usr/local/bin/npx"),
+            Path.home() / ".local" / "bin" / "npx",
+            Path.home() / ".npm-global" / "bin" / "npx",
+        ])
+        candidates.extend(sorted((Path.home() / ".nvm" / "versions" / "node").glob("*/bin/npx"), reverse=True))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def _running_on_windows() -> bool:
+    return os.name == "nt"
+
+
+def _npx_command(*args: str) -> tuple[list[str], dict[str, str] | None]:
+    npx_binary = _resolve_npx_binary()
+    if not npx_binary:
+        return ["npx", "-y", *args], None
+
+    bin_dir = str(Path(npx_binary).parent)
+    inherited_path = os.environ.get("PATH", "")
+    prefixed_path = bin_dir if not inherited_path else f"{bin_dir}{os.pathsep}{inherited_path}"
+    return [npx_binary, "-y", *args], {"PATH": prefixed_path}
+
+
+def _merge_env(base: dict[str, str] | None, extra: dict[str, str] | None) -> dict[str, str] | None:
+    if base is None and extra is None:
+        return None
+    merged: dict[str, str] = {}
+    if extra:
+        merged.update(extra)
+    if base:
+        merged.update(base)
+    return merged
+
+
 def _external_mcp_configs(settings: KiraClawSettings) -> list[McpServerConfig]:
     configs: list[McpServerConfig] = []
+    npx_env: dict[str, str] | None
 
     if settings.perplexity_enabled and _is_present(settings.perplexity_api_key):
+        command, npx_env = _npx_command("server-perplexity-ask")
         configs.append(
             McpServerConfig(
                 name="perplexity",
-                command=PERPLEXITY_MCP_COMMAND,
-                env={"PERPLEXITY_API_KEY": settings.perplexity_api_key},
+                command=command,
+                env=_merge_env({"PERPLEXITY_API_KEY": settings.perplexity_api_key}, npx_env),
                 wire_format="line",
             )
         )
 
     if settings.gitlab_enabled and _is_present(settings.gitlab_personal_access_token):
+        command, npx_env = _npx_command("@zereight/mcp-gitlab")
         configs.append(
             McpServerConfig(
                 name="gitlab",
-                command=GITLAB_MCP_COMMAND,
-                env={
+                command=command,
+                env=_merge_env({
                     "GITLAB_PERSONAL_ACCESS_TOKEN": settings.gitlab_personal_access_token,
                     "GITLAB_API_URL": _normalize_gitlab_api_url(settings.gitlab_api_url),
                     "GITLAB_READ_ONLY_MODE": "false",
                     "USE_GITLAB_WIKI": "false",
                     "USE_MILESTONE": "false",
                     "USE_PIPELINE": "false",
-                },
+                }, npx_env),
                 wire_format="line",
             )
         )
 
     if settings.ms365_enabled and _is_present(settings.ms365_client_id) and _is_present(settings.ms365_tenant_id):
+        command, npx_env = _npx_command("@batteryho/lokka-cached")
         configs.append(
             McpServerConfig(
                 name="ms365",
-                command=MS365_MCP_COMMAND,
-                env={
+                command=command,
+                env=_merge_env({
                     "TENANT_ID": settings.ms365_tenant_id,
                     "CLIENT_ID": settings.ms365_client_id,
                     "USE_INTERACTIVE": "true",
-                },
+                }, npx_env),
                 wire_format="line",
             )
         )
 
     if settings.atlassian_enabled:
         resource = settings.atlassian_confluence_site_url.strip() or settings.atlassian_jira_site_url.strip()
-        command = list(ATLASSIAN_MCP_COMMAND)
+        command, npx_env = _npx_command("mcp-remote", "https://mcp.atlassian.com/v1/sse")
         if resource:
             command.extend(["--resource", resource.rstrip("/") + "/"])
         configs.append(
             McpServerConfig(
                 name="atlassian",
                 command=command,
+                env=npx_env,
                 wire_format="line",
             )
         )
@@ -141,41 +193,40 @@ def _external_mcp_configs(settings: KiraClawSettings) -> list[McpServerConfig]:
         and _is_present(settings.tableau_pat_name)
         and _is_present(settings.tableau_pat_value)
     ):
+        command, npx_env = _npx_command("@tableau/mcp-server@latest")
         configs.append(
             McpServerConfig(
                 name="tableau",
-                command=TABLEAU_MCP_COMMAND,
-                env={
+                command=command,
+                env=_merge_env({
                     "SERVER": settings.tableau_server,
                     "SITE_NAME": settings.tableau_site_name,
                     "PAT_NAME": settings.tableau_pat_name,
                     "PAT_VALUE": settings.tableau_pat_value,
-                },
+                }, npx_env),
             )
         )
 
     if settings.browser_enabled and settings.browser_profile_dir is not None:
-        command = [
-            *PLAYWRIGHT_MCP_COMMAND,
-            "--browser",
-            "chrome",
-            "--user-data-dir",
-            str(settings.browser_profile_dir),
-        ]
+        command, npx_env = _npx_command("@playwright/mcp@latest")
+        command.extend(["--browser", "chrome", "--user-data-dir", str(settings.browser_profile_dir)])
         if settings.browser_output_dir is not None:
             command.extend(["--output-dir", str(settings.browser_output_dir)])
         configs.append(
             McpServerConfig(
                 name="playwright",
                 command=command,
+                env=npx_env,
             )
         )
 
     for server in _parse_remote_mcp_servers(settings.remote_mcp_servers):
+        command, npx_env = _npx_command("mcp-remote", server["url"])
         configs.append(
             McpServerConfig(
                 name=server["name"],
-                command=["npx", "-y", "mcp-remote", server["url"]],
+                command=command,
+                env=npx_env,
                 wire_format="line",
             )
         )
@@ -197,10 +248,12 @@ def build_mcp_server_configs(settings: KiraClawSettings) -> list[McpServerConfig
 
     configs: list[McpServerConfig] = []
     if settings.mcp_time_enabled:
+        command, npx_env = _npx_command("@theo.foobar/mcp-time")
         configs.append(
             McpServerConfig(
                 name="time",
-                command=TIME_MCP_COMMAND,
+                command=command,
+                env=npx_env,
             )
         )
     if settings.mcp_files_enabled:
@@ -224,26 +277,32 @@ def build_mcp_server_configs(settings: KiraClawSettings) -> list[McpServerConfig
             )
         )
     if settings.mcp_context7_enabled:
+        command, npx_env = _npx_command("@upstash/context7-mcp")
         configs.append(
             McpServerConfig(
                 name="context7",
-                command=CONTEXT7_MCP_COMMAND,
+                command=command,
+                env=npx_env,
                 wire_format="line",
             )
         )
     if settings.mcp_arxiv_enabled:
+        command, npx_env = _npx_command("@langgpt/arxiv-paper-mcp@latest")
         configs.append(
             McpServerConfig(
                 name="arxiv",
-                command=ARXIV_MCP_COMMAND,
+                command=command,
+                env=npx_env,
                 wire_format="line",
             )
         )
     if settings.mcp_youtube_info_enabled:
+        command, npx_env = _npx_command("@limecooler/yt-info-mcp")
         configs.append(
             McpServerConfig(
                 name="youtube-info",
-                command=YOUTUBE_INFO_MCP_COMMAND,
+                command=command,
+                env=npx_env,
                 wire_format="line",
             )
         )
