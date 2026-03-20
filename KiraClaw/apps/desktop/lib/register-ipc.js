@@ -75,6 +75,17 @@ function registerIpcHandlers({ app, ipcMain, configStore, daemonController }) {
     }
     return { success: true, message: `Opened ${parentDir}.`, path: parentDir };
   });
+  ipcMain.handle("open-external", async (_event, url) => {
+    const targetUrl = String(url || "").trim();
+    if (!targetUrl) {
+      return { success: false, message: "URL is empty." };
+    }
+    const error = await shell.openExternal(targetUrl);
+    if (error) {
+      return { success: false, message: error };
+    }
+    return { success: true, message: `Opened ${targetUrl}.`, url: targetUrl };
+  });
   ipcMain.handle("start-daemon", async () => daemonController.start());
   ipcMain.handle("stop-daemon", async () => daemonController.stop());
   ipcMain.handle("restart-daemon", async () => daemonController.restart());

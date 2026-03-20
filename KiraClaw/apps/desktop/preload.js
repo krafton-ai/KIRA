@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   openPath(targetPath) {
     return ipcRenderer.invoke("open-path", targetPath);
   },
+  openExternal(url) {
+    return ipcRenderer.invoke("open-external", url);
+  },
   startDaemon() {
     return ipcRenderer.invoke("start-daemon");
   },
@@ -80,5 +83,14 @@ contextBridge.exposeInMainWorld("kiraclaw", {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+  startSlackRetrieveOAuth(payload) {
+    return request("/v1/oauth/slack-retrieve/start", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  getSlackRetrieveOAuthStatus() {
+    return request("/v1/oauth/slack-retrieve/status");
   },
 });

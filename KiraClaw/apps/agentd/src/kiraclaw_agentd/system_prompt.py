@@ -105,6 +105,29 @@ def _format_speak_guidance(agent_name: str, tool_names: list[str]) -> str | None
     )
 
 
+def _format_channel_delivery_guidance(tool_names: list[str]) -> str | None:
+    channel_tools = {
+        "slack_send_message",
+        "slack_reply_to_thread",
+        "slack_add_reaction",
+        "slack_upload_file",
+        "telegram_send_message",
+        "telegram_upload_file",
+        "discord_send_message",
+        "discord_upload_file",
+    }
+    if not any(name in tool_names for name in channel_tools):
+        return None
+
+    return (
+        "Channel tools are delivery/control tools, not retrieval tools.\n"
+        "Use channel tools to reply, forward, react, or upload files.\n"
+        "Do not use channel tools to ask humans for information that should be gathered via MCP or other retrieval tools.\n"
+        "For Slack specifically, current-conversation delivery may use the exact IDs or mention tokens surfaced in context, but wider workspace search or investigation belongs to MCP/retrieval paths.\n"
+        "If the user already tagged a Slack user or channel in the current conversation, reuse that surfaced reference before asking follow-up questions about the same target."
+    )
+
+
 def build_system_prompt(
     agent_name: str,
     tool_names: list[str],
@@ -128,6 +151,9 @@ def build_system_prompt(
     speak_guidance = _format_speak_guidance(agent_name, tool_names)
     if speak_guidance:
         parts.append(speak_guidance)
+    channel_guidance = _format_channel_delivery_guidance(tool_names)
+    if channel_guidance:
+        parts.append(channel_guidance)
     memory_guidance = _format_memory_tool_guidance(tool_names)
     if memory_guidance:
         parts.append(memory_guidance)

@@ -120,6 +120,8 @@ function runtimeValueForField(state, field) {
     TELEGRAM_ALLOWED_NAMES: state.runtime.telegram_allowed_names,
     DISCORD_ENABLED: String(Boolean(state.runtime.discord_enabled)),
     DISCORD_ALLOWED_NAMES: state.runtime.discord_allowed_names,
+    SLACK_RETRIEVE_ENABLED: String(Boolean(state.runtime.slack_retrieve_enabled)),
+    SLACK_RETRIEVE_REDIRECT_URL: state.runtime.slack_retrieve_redirect_uri,
     CHROME_ENABLED: String(Boolean(state.runtime.browser_enabled)),
     FILESYSTEM_BASE_DIR: state.runtime.workspace_dir,
   };
@@ -337,7 +339,7 @@ function syncMcpView(state) {
     return;
   }
 
-  setText(byId("mcp-status"), t("mcp.noExternalLoaded"));
+  setText(byId("mcp-status"), t("mcp.noOptionalLoaded"));
 }
 
 function markSettingsDirty(state) {
@@ -362,7 +364,7 @@ export function bindSettingsActions({ state, onReload, onSave, onSaveAndRestart 
     syncProviderFields();
   });
 
-  const externalToggleFields = ["CHROME_ENABLED", "PERPLEXITY_ENABLED", "GITLAB_ENABLED", "MS365_ENABLED", "ATLASSIAN_ENABLED", "TABLEAU_ENABLED"];
+  const externalToggleFields = ["SLACK_RETRIEVE_ENABLED", "CHROME_ENABLED", "PERPLEXITY_ENABLED", "GITLAB_ENABLED", "MS365_ENABLED", "ATLASSIAN_ENABLED", "TABLEAU_ENABLED"];
   const channelToggleFields = ["SLACK_ENABLED", "TELEGRAM_ENABLED", "DISCORD_ENABLED"];
 
   for (const field of externalToggleFields) {

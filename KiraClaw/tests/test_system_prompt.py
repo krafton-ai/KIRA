@@ -66,6 +66,29 @@ def test_system_prompt_mentions_speak_guidance_when_available() -> None:
     assert "speak only if someone explicitly addresses you as 세나" in prompt
 
 
+def test_system_prompt_marks_channel_tools_as_delivery_only() -> None:
+    prompt = build_system_prompt(
+        "세나",
+        [
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "grep",
+            "glob",
+            "speak",
+            "slack_send_message",
+            "slack_reply_to_thread",
+            "submit",
+        ],
+    )
+
+    assert "Channel tools are delivery/control tools, not retrieval tools." in prompt
+    assert "Do not use channel tools to ask humans for information" in prompt
+    assert "wider workspace search or investigation belongs to MCP/retrieval paths" in prompt
+    assert "reuse that surfaced reference before asking follow-up questions" in prompt
+
+
 def test_system_prompt_mentions_memory_index_first_flow_when_available() -> None:
     prompt = build_system_prompt(
         "세나",

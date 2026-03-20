@@ -457,6 +457,11 @@ select {
   opacity: 0.46;
 }
 
+.oauth-connect-hint {
+  margin: 6px 0 0;
+  text-align: center;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -899,6 +904,17 @@ select {
 
 .field.full {
   grid-column: 1 / -1;
+}
+
+.inline-code-block {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .field-action-row {

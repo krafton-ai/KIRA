@@ -13,6 +13,23 @@ import { initTheme } from "./theme.mjs";
 
 const api = window.kiraclaw;
 let engineActionTimer = null;
+let slackRetrieveOauthPollTimer = null;
+
+function syncSlackRetrieveConnectState() {
+  const connectButton = byId("connect-slack-retrieve");
+  const connectHint = byId("slack-retrieve-connect-hint");
+  if (!connectButton) {
+    return;
+  }
+
+  const engineOnline = Boolean(state.runtime) || Boolean(state.daemonStatus?.running);
+  connectButton.disabled = !engineOnline;
+  connectButton.setAttribute("aria-disabled", String(connectButton.disabled));
+
+  if (connectHint) {
+    connectHint.hidden = engineOnline;
+  }
+}
 
 function renderDesktopState() {
   if (!state.settingsDirty) {
@@ -20,6 +37,7 @@ function renderDesktopState() {
   }
   applyAgentIdentity(state);
   updateHomeStatus(state, state.daemonStatus, state.runtime);
+  syncSlackRetrieveConnectState();
 }
 
 function rerenderLanguageSensitiveViews() {
@@ -58,6 +76,59 @@ function clearEngineActionTimer() {
     window.clearTimeout(engineActionTimer);
     engineActionTimer = null;
   }
+}
+
+function stopSlackRetrieveOauthPolling() {
+  if (slackRetrieveOauthPollTimer) {
+    window.clearInterval(slackRetrieveOauthPollTimer);
+    slackRetrieveOauthPollTimer = null;
+    syncSlackRetrieveConnectState();
+  }
+}
+
+function startSlackRetrieveOauthPolling() {
+  stopSlackRetrieveOauthPolling();
+  slackRetrieveOauthPollTimer = window.setInterval(async () => {
+    try {
+      const status = await api.getSlackRetrieveOAuthStatus();
+      if (status.status === "pending" || status.status === "idle") {
+        return;
+      }
+      stopSlackRetrieveOauthPolling();
+      if (status.status === "success") {
+        setSettingsStatus(t("status.slackRetrieveOauthRestarting"));
+        setEngineAction({
+          action: "restart",
+          busy: true,
+          message: t("status.slackRetrieveOauthRestarting"),
+          tone: "progress",
+          visible: true,
+        });
+        await refreshRuntime();
+        const result = await api.restartDaemon();
+        setEngineAction({
+          action: "restart",
+          busy: false,
+          message: result.message || t("status.slackRetrieveOauthRestarted"),
+          tone: result.success ? "success" : "error",
+          visible: true,
+        });
+        setSettingsStatus(result.message || t("status.slackRetrieveOauthRestarted"));
+        await loadConfig();
+        await refreshRuntime();
+        scheduleEngineActionClear();
+        return;
+      }
+
+      setSettingsStatus(status.message || "");
+      await loadConfig();
+      await refreshRuntime();
+    } catch (error) {
+      stopSlackRetrieveOauthPolling();
+      setSettingsStatus(error.message);
+    }
+  }, 1000);
+  syncSlackRetrieveConnectState();
 }
 
 function scheduleEngineActionClear() {
@@ -307,6 +378,37 @@ function bindActions() {
       setSettingsStatus(result.message || t("status.filesystemBaseDirOpened"));
     } catch (error) {
       setSettingsStatus(t("status.openFolderFailed", { message: error.message }));
+    }
+  });
+  document.getElementById("connect-slack-retrieve")?.addEventListener("click", async () => {
+    try {
+      const engineOnline = Boolean(state.runtime) || Boolean(state.daemonStatus?.running);
+      if (!engineOnline) {
+        setSettingsStatus(t("status.slackRetrieveStartEngineFirst"));
+        syncSlackRetrieveConnectState();
+        return;
+      }
+      const updates = collectSettingsUpdates(state);
+      const clientId = String(updates.SLACK_RETRIEVE_CLIENT_ID || state.config.SLACK_RETRIEVE_CLIENT_ID || "").trim();
+      const clientSecret = String(updates.SLACK_RETRIEVE_CLIENT_SECRET || state.config.SLACK_RETRIEVE_CLIENT_SECRET || "").trim();
+      const redirectUri = String(updates.SLACK_RETRIEVE_REDIRECT_URL || state.config.SLACK_RETRIEVE_REDIRECT_URL || "").trim();
+      if (!clientId || !clientSecret) {
+        setSettingsStatus(t("status.slackRetrieveClientCredentialsRequired"));
+        return;
+      }
+      await api.saveConfig(updates);
+      state.config = { ...state.config, ...updates };
+      state.settingsDirty = false;
+      const result = await api.startSlackRetrieveOAuth({
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+      });
+      await api.openExternal(result.authorization_url);
+      setSettingsStatus(result.message || t("status.slackRetrieveOauthStarted"));
+      startSlackRetrieveOauthPolling();
+    } catch (error) {
+      setSettingsStatus(error.message);
     }
   });
   bindChatActions({

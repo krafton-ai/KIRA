@@ -17,6 +17,11 @@ export const SETTINGS_FIELDS = [
   "DISCORD_ENABLED",
   "DISCORD_BOT_TOKEN",
   "DISCORD_ALLOWED_NAMES",
+  "SLACK_RETRIEVE_ENABLED",
+  "SLACK_RETRIEVE_CLIENT_ID",
+  "SLACK_RETRIEVE_CLIENT_SECRET",
+  "SLACK_RETRIEVE_REDIRECT_URL",
+  "SLACK_RETRIEVE_TOKEN",
   "CHROME_ENABLED",
   "PERPLEXITY_ENABLED",
   "PERPLEXITY_API_KEY",
@@ -49,6 +54,7 @@ export const BOOLEAN_FIELDS = [
   "SLACK_ENABLED",
   "TELEGRAM_ENABLED",
   "DISCORD_ENABLED",
+  "SLACK_RETRIEVE_ENABLED",
 ];
 
 export const SELECT_DEFAULTS = {
@@ -62,6 +68,7 @@ export const SELECT_DEFAULTS = {
   SLACK_ENABLED: "true",
   TELEGRAM_ENABLED: "false",
   DISCORD_ENABLED: "false",
+  SLACK_RETRIEVE_ENABLED: "false",
 };
 
 export const PROVIDER_DEFAULT_MODELS = {
@@ -72,6 +79,7 @@ export const PROVIDER_DEFAULT_MODELS = {
 export const DEFAULT_CHAT_SESSION_ID = "desktop:local";
 
 export const EXTERNAL_MCP_SERVER_NAMES = [
+  "slack-retrieve",
   "perplexity",
   "gitlab",
   "ms365",
@@ -81,6 +89,7 @@ export const EXTERNAL_MCP_SERVER_NAMES = [
 ];
 
 export const EXTERNAL_MCP_CONFIG_FIELDS = {
+  "slack-retrieve": "SLACK_RETRIEVE_ENABLED",
   playwright: "CHROME_ENABLED",
   perplexity: "PERPLEXITY_ENABLED",
   gitlab: "GITLAB_ENABLED",

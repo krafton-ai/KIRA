@@ -17,6 +17,8 @@ def _write_legacy_state(home: Path, workspace: Path) -> None:
                 'SLACK_APP_TOKEN="legacy-app-token"',
                 'SLACK_SIGNING_SECRET="legacy-signing-secret"',
                 'SLACK_TEAM_ID="legacy-team"',
+                'SLACK_RETRIEVE_ENABLED="true"',
+                'SLACK_RETRIEVE_TOKEN="legacy-slack-retrieve-token"',
                 'TELEGRAM_ENABLED="true"',
                 'TELEGRAM_BOT_TOKEN="legacy-telegram-token"',
                 'TELEGRAM_ALLOWED_NAMES="jiho, 전지호"',
@@ -86,6 +88,8 @@ def test_auto_mode_prefers_legacy_kira_home(tmp_path, monkeypatch) -> None:
     assert settings.mcp_context7_enabled is True
     assert settings.mcp_arxiv_enabled is True
     assert settings.mcp_youtube_info_enabled is True
+    assert settings.slack_retrieve_enabled is True
+    assert settings.slack_retrieve_token == "legacy-slack-retrieve-token"
     assert settings.perplexity_enabled is True
     assert settings.perplexity_api_key == "legacy-perplexity-key"
     assert settings.gitlab_enabled is True
@@ -167,6 +171,8 @@ def test_explicit_modern_home_keeps_openai_provider(tmp_path, monkeypatch) -> No
     assert settings.mcp_context7_enabled is True
     assert settings.mcp_arxiv_enabled is True
     assert settings.mcp_youtube_info_enabled is True
+    assert settings.slack_retrieve_enabled is False
+    assert settings.slack_retrieve_token == ""
     assert settings.browser_enabled is False
     assert settings.browser_profile_dir == home / ".kiraclaw" / "workspaces" / "default" / "chrome_profile"
     assert settings.browser_output_dir == home / ".kiraclaw" / "workspaces" / "default" / "files"

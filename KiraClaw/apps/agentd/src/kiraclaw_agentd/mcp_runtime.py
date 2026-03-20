@@ -21,6 +21,7 @@ EXTERNAL_MCP_SERVER_START_TIMEOUT = 60.0
 PLAYWRIGHT_MCP_SERVER_START_TIMEOUT = 90.0
 FILES_MCP_COMMAND = [sys.executable, str(_MODULE_DIR / "files_mcp_server.py")]
 SCHEDULER_MCP_COMMAND = [sys.executable, str(_MODULE_DIR / "scheduler_mcp_server.py")]
+SLACK_RETRIEVE_MCP_COMMAND = [sys.executable, str(_MODULE_DIR / "slack_retrieve_mcp_server.py")]
 REMOTE_MCP_NAME_PATTERN = re.compile(r"^[a-z0-9-]+$")
 
 
@@ -304,6 +305,16 @@ def build_mcp_server_configs(settings: KiraClawSettings) -> list[McpServerConfig
                 command=command,
                 env=npx_env,
                 wire_format="line",
+            )
+        )
+    if settings.slack_retrieve_enabled and _is_present(settings.slack_retrieve_token):
+        configs.append(
+            McpServerConfig(
+                name="slack-retrieve",
+                command=SLACK_RETRIEVE_MCP_COMMAND,
+                env={
+                    "KIRACLAW_SLACK_RETRIEVE_TOKEN": settings.slack_retrieve_token,
+                },
             )
         )
     configs.extend(_external_mcp_configs(settings))

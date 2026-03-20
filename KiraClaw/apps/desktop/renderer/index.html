@@ -301,7 +301,7 @@
           <header class="view-head">
             <div>
               <h2>MCP</h2>
-              <p class="inline-copy" data-i18n="mcp.subtitle">Only external npm MCP integrations live here.</p>
+              <p class="inline-copy" data-i18n="mcp.subtitle">Optional retrieval and integration MCP servers live here.</p>
             </div>
           </header>
 
@@ -327,6 +327,40 @@
             </section>
 
             <section class="settings-section">
+              <h3 data-i18n="mcp.slackRetrieveTitle">Slack Retrieve</h3>
+              <p class="section-copy" data-i18n="mcp.slackRetrieveDesc">Use Slack Retrieve with a separate user token for workspace-wide search and history lookup. Keep current-conversation replies and delivery in Channels &gt; Slack.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title" data-i18n="common.enabled">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="SLACK_RETRIEVE_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="SLACK_RETRIEVE_ENABLED" hidden>
+                <label class="field">
+                  <span data-i18n="mcp.slackRetrieveClientId">Slack Retrieve Client ID</span>
+                  <input id="SLACK_RETRIEVE_CLIENT_ID" placeholder="1234567890.1234567890" />
+                </label>
+                <label class="field">
+                  <span data-i18n="mcp.slackRetrieveClientSecret">Slack Retrieve Client Secret</span>
+                  <input id="SLACK_RETRIEVE_CLIENT_SECRET" type="password" data-secret="true" />
+                </label>
+                <label class="field full">
+                  <span data-i18n="mcp.slackRetrieveRedirectUri">Redirect URI</span>
+                  <input id="SLACK_RETRIEVE_REDIRECT_URL" placeholder="https://your-ngrok-domain/v1/oauth/slack-retrieve/callback" />
+                </label>
+                <div class="field full browser-setup-actions">
+                  <div class="button-row">
+                    <button id="connect-slack-retrieve" class="ghost" type="button" data-i18n="mcp.connectSlack">Connect Slack</button>
+                  </div>
+                  <p id="slack-retrieve-connect-hint" class="section-copy oauth-connect-hint" data-i18n="mcp.slackRetrieveEngineRequired" hidden>Start the KIRA Engine before connecting Slack Retrieve.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section">
               <h3>Perplexity</h3>
               <p class="section-copy" data-i18n="mcp.perplexityDesc">Use the npm MCP package with your Perplexity API key.</p>
               <div class="toggle-field">
@@ -342,30 +376,6 @@
                 <label class="field full">
                   <span data-i18n="mcp.perplexityApiKey">Perplexity API Key</span>
                   <input id="PERPLEXITY_API_KEY" type="password" data-secret="true" placeholder="pplx-..." />
-                </label>
-              </div>
-            </section>
-
-            <section class="settings-section">
-              <h3>GitLab</h3>
-              <p class="section-copy" data-i18n="mcp.gitlabDesc">Use the npm GitLab MCP package. `https://gitlab.com` is enough for GitLab.com.</p>
-              <div class="toggle-field">
-                <div class="toggle-copy">
-                  <span class="toggle-title" data-i18n="common.enabled">Enabled</span>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="GITLAB_ENABLED" />
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-              <div class="form-grid external-mcp-fields" data-external-mcp-fields="GITLAB_ENABLED" hidden>
-                <label class="field">
-                  <span data-i18n="mcp.gitlabUrl">GitLab URL</span>
-                  <input id="GITLAB_API_URL" placeholder="https://gitlab.com" />
-                </label>
-                <label class="field">
-                  <span data-i18n="mcp.accessToken">Access Token</span>
-                  <input id="GITLAB_PERSONAL_ACCESS_TOKEN" type="password" data-secret="true" />
                 </label>
               </div>
             </section>
@@ -455,6 +465,30 @@
             </section>
 
             <section class="settings-section">
+              <h3>GitLab</h3>
+              <p class="section-copy" data-i18n="mcp.gitlabDesc">Use the npm GitLab MCP package. `https://gitlab.com` is enough for GitLab.com.</p>
+              <div class="toggle-field">
+                <div class="toggle-copy">
+                  <span class="toggle-title" data-i18n="common.enabled">Enabled</span>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="GITLAB_ENABLED" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-grid external-mcp-fields" data-external-mcp-fields="GITLAB_ENABLED" hidden>
+                <label class="field">
+                  <span data-i18n="mcp.gitlabUrl">GitLab URL</span>
+                  <input id="GITLAB_API_URL" placeholder="https://gitlab.com" />
+                </label>
+                <label class="field">
+                  <span data-i18n="mcp.accessToken">Access Token</span>
+                  <input id="GITLAB_PERSONAL_ACCESS_TOKEN" type="password" data-secret="true" />
+                </label>
+              </div>
+            </section>
+
+            <section class="settings-section">
               <h3 data-i18n="mcp.customRemoteTitle">Custom Remote MCP</h3>
               <p class="section-copy" data-i18n="mcp.customRemoteDesc">Add remote MCP servers with a name and URL. They will load through <code>mcp-remote</code>.</p>
               <div id="remote-mcp-list" class="remote-mcp-list"></div>
@@ -465,7 +499,7 @@
           </div>
 
           <footer class="view-foot">
-            <div id="mcp-status" class="status-text" data-i18n="mcp.settingsReadFrom">External MCP settings are read from `~/.kira/config.env`.</div>
+            <div id="mcp-status" class="status-text" data-i18n="mcp.settingsReadFrom">MCP settings are read from `~/.kira/config.env`.</div>
             <div class="button-row">
               <button id="reload-mcp-config" class="ghost" data-i18n="common.reload">Reload</button>
               <button id="save-mcp-settings" class="primary" data-i18n="common.saveMcp">Save MCP</button>

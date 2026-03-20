@@ -320,6 +320,8 @@ def test_schedule_event_resolves_tagged_user_name_into_prompt(tmp_path) -> None:
 
         assert len(session_manager.calls) == 1
         assert session_manager.calls[0]["prompt"] == "KIRA @Gisang Lee (이기상) [KAI] 님한테 전달해줘"
+        assert "Slack references explicitly mentioned in the current conversation:" in session_manager.calls[0]["context_prefix"]
+        assert "- user @Gisang Lee (이기상) [KAI]: user_id=U2, mention_token=<@U2>" in session_manager.calls[0]["context_prefix"]
 
     asyncio.run(scenario())
 
@@ -353,6 +355,7 @@ def test_schedule_event_resolves_tagged_channel_name_into_prompt(tmp_path) -> No
         await asyncio.sleep(0.1)
 
         assert "Jiho Jeon: KIRA #project-updates 에 전달해줘" in session_manager.calls[0]["prompt"]
+        assert "- channel #project-updates: channel_id=C123, mention_token=<#C123|project-updates>" in session_manager.calls[0]["context_prefix"]
 
     asyncio.run(scenario())
 
@@ -386,6 +389,7 @@ def test_schedule_event_resolves_channel_name_from_channel_info_when_label_missi
         await asyncio.sleep(0.1)
 
         assert "Jiho Jeon: KIRA #design-review 로 올려줘" in session_manager.calls[0]["prompt"]
+        assert "- channel #design-review: channel_id=C456, mention_token=<#C456|design-review>" in session_manager.calls[0]["context_prefix"]
 
     asyncio.run(scenario())
 

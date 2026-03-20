@@ -4,9 +4,11 @@ import asyncio
 from importlib.metadata import PackageNotFoundError, version as package_version
 import os
 import signal
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from fastapi.responses import HTMLResponse
 
 from kiraclaw_agentd.channel_delivery import ChannelDelivery
 from kiraclaw_agentd.discord_adapter import DiscordGateway
@@ -18,6 +20,13 @@ from kiraclaw_agentd.scheduler_runtime import SchedulerRuntime
 from kiraclaw_agentd.session_manager import SessionManager
 from kiraclaw_agentd.settings import get_settings
 from kiraclaw_agentd.slack_adapter import SlackGateway
+from kiraclaw_agentd.slack_retrieve_oauth import (
+    build_slack_retrieve_authorize_url,
+    exchange_slack_user_token,
+    generate_oauth_state,
+    resolve_slack_retrieve_redirect_uri,
+    update_env_file,
+)
 from kiraclaw_agentd.telegram_adapter import TelegramGateway
 
 
@@ -38,6 +47,64 @@ class RunResponse(BaseModel):
     streamed_text: str
     tool_events: list[dict]
     error: str | None = None
+
+
+class SlackRetrieveOAuthStartRequest(BaseModel):
+    client_id: str
+    client_secret: str
+    redirect_uri: str | None = None
+
+
+def _oauth_result(status: str, message: str, **extra: Any) -> dict[str, Any]:
+    return {"status": status, "message": message, **extra}
+
+
+def _oauth_success_html(message: str) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KiraClaw Slack Retrieve Connected</title>
+    <style>
+      body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#111; color:#fff; padding:32px; }}
+      .card {{ max-width: 560px; margin: 48px auto; background:#1b1b1b; border:1px solid #333; border-radius:18px; padding:24px; }}
+      h1 {{ margin-top:0; font-size: 24px; }}
+      p {{ line-height:1.5; color:#d6d6d6; }}
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Slack Retrieve connected</h1>
+      <p>{message}</p>
+      <p>You can close this tab and return to KiraClaw.</p>
+    </main>
+  </body>
+</html>"""
+
+
+def _oauth_error_html(message: str) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>KiraClaw Slack Retrieve Error</title>
+    <style>
+      body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#111; color:#fff; padding:32px; }}
+      .card {{ max-width: 560px; margin: 48px auto; background:#1b1b1b; border:1px solid #333; border-radius:18px; padding:24px; }}
+      h1 {{ margin-top:0; font-size: 24px; }}
+      p {{ line-height:1.5; color:#d6d6d6; }}
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Slack Retrieve connection failed</h1>
+      <p>{message}</p>
+      <p>You can close this tab and return to KiraClaw.</p>
+    </main>
+  </body>
+</html>"""
 
 
 def _agentd_version() -> str:
@@ -77,6 +144,18 @@ def create_app() -> FastAPI:
     app.state.channel_delivery = channel_delivery
     app.state.scheduler_runtime = scheduler_runtime
     app.state.run_log_store = run_log_store
+    redirect_uri = resolve_slack_retrieve_redirect_uri(
+        configured_url=settings.slack_retrieve_redirect_url,
+        host=settings.host,
+        port=settings.port,
+    )
+    app.state.slack_retrieve_oauth = {
+        "pending_state": None,
+        "client_id": "",
+        "client_secret": "",
+        "redirect_uri": redirect_uri,
+        "result": _oauth_result("idle", "Slack Retrieve OAuth has not started yet."),
+    }
 
     @app.on_event("startup")
     async def startup() -> None:
@@ -118,6 +197,12 @@ def create_app() -> FastAPI:
             "mcp_context7_enabled": settings.mcp_context7_enabled,
             "mcp_arxiv_enabled": settings.mcp_arxiv_enabled,
             "mcp_youtube_info_enabled": settings.mcp_youtube_info_enabled,
+            "slack_retrieve_enabled": settings.slack_retrieve_enabled,
+            "slack_retrieve_redirect_uri": resolve_slack_retrieve_redirect_uri(
+                configured_url=settings.slack_retrieve_redirect_url,
+                host=settings.host,
+                port=settings.port,
+            ),
             "primary_channel": settings.primary_channel,
             "slack_enabled": settings.slack_enabled,
             "slack_allowed_names": settings.slack_allowed_names,
@@ -225,6 +310,102 @@ def create_app() -> FastAPI:
             "logs": run_log_store.tail(limit=limit, session_id=session_id),
             "run_log_file": str(run_log_store.log_file),
         }
+
+    @app.get("/v1/oauth/slack-retrieve/status")
+    async def slack_retrieve_oauth_status() -> dict:
+        flow = app.state.slack_retrieve_oauth
+        return {
+            "redirect_uri": flow["redirect_uri"],
+            **flow["result"],
+        }
+
+    @app.post("/v1/oauth/slack-retrieve/start")
+    async def start_slack_retrieve_oauth(request: SlackRetrieveOAuthStartRequest) -> dict:
+        client_id = request.client_id.strip()
+        client_secret = request.client_secret.strip()
+        if not client_id or not client_secret:
+            raise HTTPException(status_code=400, detail="Slack Retrieve Client ID and Client Secret are required.")
+
+        state_token = generate_oauth_state()
+        redirect_uri = resolve_slack_retrieve_redirect_uri(
+            configured_url=request.redirect_uri or settings.slack_retrieve_redirect_url,
+            host=settings.host,
+            port=settings.port,
+        )
+        app.state.slack_retrieve_oauth = {
+            "pending_state": state_token,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "result": _oauth_result("pending", "Slack authorization started. Finish the flow in your browser."),
+        }
+        return {
+            "authorization_url": build_slack_retrieve_authorize_url(
+                client_id=client_id,
+                redirect_uri=redirect_uri,
+                state=state_token,
+            ),
+            "redirect_uri": redirect_uri,
+            **app.state.slack_retrieve_oauth["result"],
+        }
+
+    @app.get("/v1/oauth/slack-retrieve/callback", response_class=HTMLResponse)
+    async def slack_retrieve_oauth_callback(
+        code: str | None = None,
+        state: str | None = None,
+        error: str | None = None,
+    ) -> HTMLResponse:
+        flow = app.state.slack_retrieve_oauth
+        redirect_uri = str(
+            flow.get("redirect_uri")
+            or resolve_slack_retrieve_redirect_uri(
+                configured_url=settings.slack_retrieve_redirect_url,
+                host=settings.host,
+                port=settings.port,
+            )
+        )
+
+        if error:
+            message = f"Slack returned an error: {error}"
+            flow["result"] = _oauth_result("error", message)
+            return HTMLResponse(_oauth_error_html(message), status_code=400)
+
+        if not code or not state:
+            message = "Slack OAuth callback is missing the authorization code or state."
+            flow["result"] = _oauth_result("error", message)
+            return HTMLResponse(_oauth_error_html(message), status_code=400)
+
+        if state != flow.get("pending_state"):
+            message = "Slack OAuth state mismatch. Start the connection flow again from KiraClaw."
+            flow["result"] = _oauth_result("error", message)
+            return HTMLResponse(_oauth_error_html(message), status_code=400)
+
+        try:
+            token = await exchange_slack_user_token(
+                client_id=str(flow.get("client_id") or ""),
+                client_secret=str(flow.get("client_secret") or ""),
+                code=code,
+                redirect_uri=redirect_uri,
+            )
+            update_env_file(
+                settings.legacy_config_file,
+                {"SLACK_RETRIEVE_TOKEN": token.access_token},
+            )
+            message = "Slack Retrieve token saved. Return to KiraClaw. The desktop app will restart the engine automatically."
+            flow["result"] = _oauth_result(
+                "success",
+                message,
+                authed_user_id=token.authed_user_id,
+                scope=token.scope,
+                token_type=token.token_type,
+            )
+            flow["pending_state"] = None
+            return HTMLResponse(_oauth_success_html(message))
+        except Exception as exc:
+            message = str(exc)
+            flow["result"] = _oauth_result("error", message)
+            flow["pending_state"] = None
+            return HTMLResponse(_oauth_error_html(message), status_code=500)
 
     @app.post("/v1/admin/shutdown")
     async def shutdown() -> dict:

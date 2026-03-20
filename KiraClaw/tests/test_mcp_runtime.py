@@ -113,6 +113,8 @@ def test_mcp_runtime_builds_external_npm_configs(tmp_path) -> None:
         mcp_context7_enabled=False,
         mcp_arxiv_enabled=False,
         mcp_youtube_info_enabled=False,
+        slack_retrieve_enabled=True,
+        slack_retrieve_token="xoxp-retrieve-token",
         perplexity_enabled=True,
         perplexity_api_key="perplexity-key",
         gitlab_enabled=True,
@@ -134,32 +136,33 @@ def test_mcp_runtime_builds_external_npm_configs(tmp_path) -> None:
 
     configs = build_mcp_server_configs(settings)
 
-    assert [config.name for config in configs] == ["perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright", "docs"]
-    assert configs[0].env is not None
-    assert configs[0].env["PERPLEXITY_API_KEY"] == "perplexity-key"
-    assert "PATH" in configs[0].env
-    assert configs[0].wire_format == "line"
+    assert [config.name for config in configs] == ["slack-retrieve", "perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright", "docs"]
+    assert configs[0].env == {"KIRACLAW_SLACK_RETRIEVE_TOKEN": "xoxp-retrieve-token"}
     assert configs[1].env is not None
-    assert configs[1].env["GITLAB_API_URL"] == "https://gitlab.com/api/v4"
+    assert configs[1].env["PERPLEXITY_API_KEY"] == "perplexity-key"
+    assert "PATH" in configs[1].env
     assert configs[1].wire_format == "line"
     assert configs[2].env is not None
-    assert configs[2].env["TENANT_ID"] == "tenant-id"
-    assert configs[2].env["CLIENT_ID"] == "client-id"
-    assert configs[2].env["USE_INTERACTIVE"] == "true"
+    assert configs[2].env["GITLAB_API_URL"] == "https://gitlab.com/api/v4"
     assert configs[2].wire_format == "line"
-    assert configs[3].command[-2:] == ["--resource", "https://acme.atlassian.net/"]
-    assert configs[4].env is not None
-    assert configs[4].env["SERVER"] == "https://tableau.example.com"
-    assert configs[4].env["SITE_NAME"] == "craft"
-    assert configs[4].env["PAT_NAME"] == "pat-name"
-    assert configs[4].env["PAT_VALUE"] == "pat-value"
-    assert "@playwright/mcp@latest" in configs[5].command
-    assert "--browser" in configs[5].command
-    assert "chrome" in configs[5].command
-    assert "--user-data-dir" in configs[5].command
-    assert "--output-dir" in configs[5].command
-    assert configs[6].command[-2:] == ["mcp-remote", "https://example.com/mcp"]
-    assert configs[6].wire_format == "line"
+    assert configs[3].env is not None
+    assert configs[3].env["TENANT_ID"] == "tenant-id"
+    assert configs[3].env["CLIENT_ID"] == "client-id"
+    assert configs[3].env["USE_INTERACTIVE"] == "true"
+    assert configs[3].wire_format == "line"
+    assert configs[4].command[-2:] == ["--resource", "https://acme.atlassian.net/"]
+    assert configs[5].env is not None
+    assert configs[5].env["SERVER"] == "https://tableau.example.com"
+    assert configs[5].env["SITE_NAME"] == "craft"
+    assert configs[5].env["PAT_NAME"] == "pat-name"
+    assert configs[5].env["PAT_VALUE"] == "pat-value"
+    assert "@playwright/mcp@latest" in configs[6].command
+    assert "--browser" in configs[6].command
+    assert "chrome" in configs[6].command
+    assert "--user-data-dir" in configs[6].command
+    assert "--output-dir" in configs[6].command
+    assert configs[7].command[-2:] == ["mcp-remote", "https://example.com/mcp"]
+    assert configs[7].wire_format == "line"
 
 
 def test_mcp_runtime_includes_external_servers_for_startup(tmp_path) -> None:
@@ -175,6 +178,8 @@ def test_mcp_runtime_includes_external_servers_for_startup(tmp_path) -> None:
         mcp_context7_enabled=False,
         mcp_arxiv_enabled=False,
         mcp_youtube_info_enabled=False,
+        slack_retrieve_enabled=True,
+        slack_retrieve_token="xoxp-retrieve-token",
         perplexity_enabled=True,
         perplexity_api_key="perplexity-key",
         gitlab_enabled=True,
@@ -196,7 +201,7 @@ def test_mcp_runtime_includes_external_servers_for_startup(tmp_path) -> None:
 
     configs = build_mcp_server_configs(settings)
 
-    assert [config.name for config in configs] == ["perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright", "docs"]
+    assert [config.name for config in configs] == ["slack-retrieve", "perplexity", "gitlab", "ms365", "atlassian", "tableau", "playwright", "docs"]
 
 
 def test_mcp_runtime_start_loads_all_configs(tmp_path, monkeypatch) -> None:
@@ -225,6 +230,8 @@ def test_mcp_runtime_start_loads_all_configs(tmp_path, monkeypatch) -> None:
         mcp_context7_enabled=False,
         mcp_arxiv_enabled=False,
         mcp_youtube_info_enabled=False,
+        slack_retrieve_enabled=True,
+        slack_retrieve_token="xoxp-retrieve-token",
         perplexity_enabled=True,
         perplexity_api_key="perplexity-key",
         gitlab_enabled=True,
@@ -245,11 +252,11 @@ def test_mcp_runtime_start_loads_all_configs(tmp_path, monkeypatch) -> None:
 
     asyncio.run(runtime.start())
 
-    assert runtime.loaded_server_names == ["perplexity", "gitlab", "ms365", "atlassian", "playwright", "docs"]
+    assert runtime.loaded_server_names == ["slack-retrieve", "perplexity", "gitlab", "ms365", "atlassian", "playwright", "docs"]
     assert runtime.deferred_server_names == []
     assert runtime.failed_server_names == []
-    assert runtime.loaded_server_names == ["perplexity", "gitlab", "ms365", "atlassian", "playwright", "docs"]
-    assert runtime.tool_names == ["perplexity_tool", "gitlab_tool", "ms365_tool", "atlassian_tool", "playwright_tool", "docs_tool"]
+    assert runtime.loaded_server_names == ["slack-retrieve", "perplexity", "gitlab", "ms365", "atlassian", "playwright", "docs"]
+    assert runtime.tool_names == ["slack-retrieve_tool", "perplexity_tool", "gitlab_tool", "ms365_tool", "atlassian_tool", "playwright_tool", "docs_tool"]
 
     asyncio.run(runtime.stop())
 

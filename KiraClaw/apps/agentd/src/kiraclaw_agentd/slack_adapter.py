@@ -32,6 +32,7 @@ class _BufferedSlackEvent:
     user: str
     user_name: str
     prompt: str
+    reference_context: str | None
     mention: bool
     client: Any
 
@@ -429,7 +430,9 @@ class SlackGateway:
         if not _is_authorized_user_name(user_name, self.settings.slack_allowed_names):
             logger.info("Ignoring unauthorized Slack user: user=%s name=%s", user, user_name)
             return
-        prompt_text = await self._resolve_user_mentions_in_text(client, str(event.get("text") or ""))
+        raw_text = str(event.get("text") or "")
+        prompt_text = await self._resolve_user_mentions_in_text(client, raw_text)
+        reference_context = await self._build_delivery_reference_context(client, raw_text)
         prompt = _build_event_prompt(
             {**event, "text": prompt_text},
             mention=mention,
@@ -458,6 +461,7 @@ class SlackGateway:
                 user=user,
                 user_name=user_name,
                 prompt=prompt,
+                reference_context=reference_context,
                 mention=mention,
                 client=client,
             ),
@@ -466,6 +470,9 @@ class SlackGateway:
     async def _flush_debounced_events(self, items: list[_BufferedSlackEvent]) -> None:
         last = items[-1]
         merged_prompt = _merge_prompt_text(items)
+        merged_reference_context = _merge_context_prefix(
+            *dict.fromkeys(item.reference_context for item in items if item.reference_context)
+        )
         excluded_timestamps = {
             str(item.event.get("ts"))
             for item in items
@@ -479,6 +486,7 @@ class SlackGateway:
             user=last.user,
             user_name=last.user_name,
             prompt=merged_prompt or last.prompt,
+            reference_context=merged_reference_context,
             mention=last.mention,
             client=last.client,
             excluded_timestamps=excluded_timestamps,
@@ -494,6 +502,7 @@ class SlackGateway:
         user: str,
         user_name: str,
         prompt: str,
+        reference_context: str | None = None,
         mention: bool,
         client,
         excluded_timestamps: set[str] | None = None,
@@ -513,7 +522,9 @@ class SlackGateway:
                 event=event,
                 excluded_timestamps=excluded_timestamps,
             )
-            context_prefix = _merge_context_prefix(delivery_context, bootstrap_context)
+            context_prefix = _merge_context_prefix(delivery_context, reference_context, bootstrap_context)
+        else:
+            context_prefix = _merge_context_prefix(delivery_context, reference_context)
         record = await self.session_manager.run(
             session_id=session_id,
             prompt=prompt,
@@ -674,3 +685,41 @@ class SlackGateway:
             return f"#{channel_name}"
 
         return _CHANNEL_MENTION_RE.sub(replace_channel, resolved)
+
+    async def _build_delivery_reference_context(self, client, text: str) -> str | None:
+        if "<@" not in text and "<#" not in text:
+            return None
+
+        bot_user_id = self.identity.get("user_id")
+        lines: list[str] = []
+
+        seen_users: set[str] = set()
+        for match in _USER_MENTION_RE.finditer(text):
+            user_id = match.group(1)
+            if user_id == bot_user_id or user_id in seen_users:
+                continue
+            seen_users.add(user_id)
+            user_name = await self._get_user_name(client, user_id)
+            lines.append(f"- user @{user_name}: user_id={user_id}, mention_token=<@{user_id}>")
+
+        seen_channels: set[str] = set()
+        for match in _CHANNEL_MENTION_RE.finditer(text):
+            channel_id = match.group(1)
+            if channel_id in seen_channels:
+                continue
+            seen_channels.add(channel_id)
+            channel_name = (match.group(2) or await self._get_channel_name(client, channel_id)).strip() or channel_id
+            lines.append(
+                f"- channel #{channel_name}: channel_id={channel_id}, mention_token=<#{channel_id}|{channel_name}>"
+            )
+
+        if not lines:
+            return None
+
+        return "\n".join(
+            [
+                "Slack references explicitly mentioned in the current conversation:",
+                *lines,
+                "Use these exact IDs or mention tokens for Slack delivery in this conversation.",
+            ]
+        )

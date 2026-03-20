@@ -96,6 +96,11 @@ class KiraClawSettings(BaseSettings):
     mcp_context7_enabled: bool = True
     mcp_arxiv_enabled: bool = True
     mcp_youtube_info_enabled: bool = True
+    slack_retrieve_enabled: bool = False
+    slack_retrieve_client_id: str = ""
+    slack_retrieve_client_secret: str = ""
+    slack_retrieve_redirect_url: str = ""
+    slack_retrieve_token: str = ""
     perplexity_enabled: bool = False
     perplexity_api_key: str = ""
     gitlab_enabled: bool = False
@@ -303,6 +308,7 @@ class KiraClawSettings(BaseSettings):
             "mcp_context7_enabled": "KIRACLAW_MCP_CONTEXT7_ENABLED",
             "mcp_arxiv_enabled": "KIRACLAW_MCP_ARXIV_ENABLED",
             "mcp_youtube_info_enabled": "KIRACLAW_MCP_YOUTUBE_INFO_ENABLED",
+            "slack_retrieve_enabled": "SLACK_RETRIEVE_ENABLED",
             "perplexity_enabled": "PERPLEXITY_ENABLED",
             "gitlab_enabled": "GITLAB_ENABLED",
             "ms365_enabled": "MS365_ENABLED",
@@ -329,6 +335,10 @@ class KiraClawSettings(BaseSettings):
             "telegram_allowed_names": "TELEGRAM_ALLOWED_NAMES",
             "discord_bot_token": "DISCORD_BOT_TOKEN",
             "discord_allowed_names": "DISCORD_ALLOWED_NAMES",
+            "slack_retrieve_client_id": "SLACK_RETRIEVE_CLIENT_ID",
+            "slack_retrieve_client_secret": "SLACK_RETRIEVE_CLIENT_SECRET",
+            "slack_retrieve_redirect_url": "SLACK_RETRIEVE_REDIRECT_URL",
+            "slack_retrieve_token": "SLACK_RETRIEVE_TOKEN",
             "perplexity_api_key": "PERPLEXITY_API_KEY",
             "gitlab_api_url": "GITLAB_API_URL",
             "gitlab_personal_access_token": "GITLAB_PERSONAL_ACCESS_TOKEN",
