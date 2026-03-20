@@ -90,6 +90,11 @@ contextBridge.exposeInMainWorld("kiraclaw", {
     }
     return request(`/v1/run-logs?${query.toString()}`);
   },
+  getDesktopMessages(sessionId = "desktop:local") {
+    const query = new URLSearchParams();
+    query.set("session_id", sessionId);
+    return request(`/v1/desktop-messages?${query.toString()}`);
+  },
   runPrompt(payload) {
     return request("/v1/runs", {
       method: "POST",

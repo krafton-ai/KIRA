@@ -117,6 +117,34 @@ def test_scheduler_tools_accept_discord_channel_type(tmp_path, monkeypatch) -> N
     asyncio.run(scenario())
 
 
+def test_scheduler_tools_accept_desktop_channel_type_with_default_target(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIRACLAW_SCHEDULE_FILE", str(tmp_path / "schedules.json"))
+    monkeypatch.setattr("kiraclaw_agentd.scheduler_mcp_tools._notify_scheduler_reload", lambda: asyncio.sleep(0, result=(True, None)))
+
+    async def scenario() -> None:
+        created = _payload(
+            await add_schedule(
+                {
+                    "name": "Desktop report",
+                    "schedule_type": "date",
+                    "schedule_value": (datetime.now(timezone.utc) + timedelta(minutes=5)).replace(microsecond=0).isoformat(),
+                    "user_id": "U123",
+                    "text": "Send the desktop report",
+                    "channel_type": "desktop",
+                }
+            )
+        )
+        assert created["success"] is True
+
+        listed = _payload(list_schedules({"channel_target": "desktop:local"}))
+        assert listed["success"] is True
+        assert listed["schedules"][0]["channel_type"] == "desktop"
+        assert listed["schedules"][0]["channel_target"] == "desktop:local"
+        assert created["reload_notified"] is True
+
+    asyncio.run(scenario())
+
+
 def test_scheduler_tools_return_warning_when_reload_notification_fails(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("KIRACLAW_SCHEDULE_FILE", str(tmp_path / "schedules.json"))
 

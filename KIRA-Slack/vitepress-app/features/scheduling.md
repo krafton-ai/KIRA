@@ -2,6 +2,15 @@
 
 KIRA can schedule messages and tasks. Receive notifications at specific times or automate recurring tasks.
 
+Scheduled runs can deliver their outward result to:
+
+- `Talk` in the desktop app
+- Slack
+- Telegram
+- Discord
+
+If you create a schedule from `Talk` and keep the delivery target on desktop, the result comes back into `Talk` as a scheduled automation message.
+
 ## 📅 Basic Usage
 
 ### One-Time Schedule
@@ -30,6 +39,11 @@ KIRA: Scheduled daily schedule summary for 9am.
 ```
 User: Friday at 5pm, compile work status and share in team channel
 KIRA: Scheduled work status sharing for Friday at 5pm.
+```
+
+```
+User: Every weekday at 9am, summarize today's priorities and send it back here
+KIRA: Scheduled a weekday morning summary for Talk.
 ```
 
 ---
@@ -114,6 +128,7 @@ Setting up regular tasks as recurring schedules is convenient:
 - Scheduled tasks only run when KIRA server is running
 - Cannot schedule for past times
 - Complex conditional scheduling (e.g., "notify me if it rains") is not supported
+- If a scheduled run stays silent, nothing is sent back to the destination
 
 ---
 

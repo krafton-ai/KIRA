@@ -132,35 +132,27 @@ function renderUpdaterState(updater, panel, actionButton, actionLabel) {
   const version = String(updater.version || "").trim();
   const roundedProgress = Math.max(0, Math.min(100, Math.round(Number(updater.progress || 0))));
 
-  panel.hidden = false;
   panel.dataset.state = status;
 
   let nextButtonText = "";
-  let showButton = true;
+  let showButton = false;
   let disableButton = false;
 
   if (status === "checking") {
-    nextButtonText = t("updater.checkingAction");
-    disableButton = true;
+    showButton = false;
   } else if (status === "available") {
     nextButtonText = t("updater.availableAction", { version: version || t("updater.latest") });
+    showButton = true;
   } else if (status === "downloading") {
     nextButtonText = t("updater.downloadingAction", { progress: String(roundedProgress) });
+    showButton = true;
     disableButton = true;
   } else if (status === "downloaded") {
     nextButtonText = t("updater.downloadedAction");
-  } else if (status === "error") {
-    nextButtonText = t("updater.checkAction");
-  } else if (status === "current") {
-    nextButtonText = t("updater.checkAction");
-  } else {
-    nextButtonText = t("updater.checkAction");
+    showButton = true;
   }
 
-  if (!nextButtonText) {
-    showButton = false;
-  }
-
+  panel.hidden = !showButton;
   actionButton.hidden = !showButton;
   actionButton.disabled = disableButton;
   setText(actionLabel, nextButtonText);

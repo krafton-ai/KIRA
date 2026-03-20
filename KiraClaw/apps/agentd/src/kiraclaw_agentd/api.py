@@ -11,6 +11,8 @@ from pydantic import BaseModel
 from fastapi.responses import HTMLResponse
 
 from kiraclaw_agentd.channel_delivery import ChannelDelivery
+from kiraclaw_agentd.delivery_targets import DEFAULT_DESKTOP_SESSION_ID
+from kiraclaw_agentd.desktop_delivery import DesktopDelivery
 from kiraclaw_agentd.discord_adapter import DiscordGateway
 from kiraclaw_agentd.engine import KiraClawEngine, RunResult, list_available_skills
 from kiraclaw_agentd.memory_runtime import MemoryRuntime
@@ -128,10 +130,12 @@ def create_app() -> FastAPI:
     slack_gateway = SlackGateway(session_manager, settings)
     telegram_gateway = TelegramGateway(session_manager, settings)
     discord_gateway = DiscordGateway(session_manager, settings)
+    desktop_delivery = DesktopDelivery()
     channel_delivery = ChannelDelivery(
         slack_gateway=slack_gateway,
         telegram_gateway=telegram_gateway,
         discord_gateway=discord_gateway,
+        desktop_delivery=desktop_delivery,
     )
     scheduler_runtime = SchedulerRuntime(settings, session_manager, channel_delivery)
 
@@ -142,6 +146,7 @@ def create_app() -> FastAPI:
     app.state.telegram_gateway = telegram_gateway
     app.state.discord_gateway = discord_gateway
     app.state.channel_delivery = channel_delivery
+    app.state.desktop_delivery = desktop_delivery
     app.state.scheduler_runtime = scheduler_runtime
     app.state.run_log_store = run_log_store
     redirect_uri = resolve_slack_retrieve_redirect_uri(
@@ -309,6 +314,13 @@ def create_app() -> FastAPI:
         return {
             "logs": run_log_store.tail(limit=limit, session_id=session_id),
             "run_log_file": str(run_log_store.log_file),
+        }
+
+    @app.get("/v1/desktop-messages")
+    async def desktop_messages(session_id: str = DEFAULT_DESKTOP_SESSION_ID) -> dict:
+        return {
+            "messages": desktop_delivery.drain_messages(session_id),
+            "session_id": session_id,
         }
 
     @app.get("/v1/oauth/slack-retrieve/status")

@@ -13,10 +13,10 @@ hero:
   actions:
     - theme: brand
       text: Download for macOS
-      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg
+      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-arm64.dmg
     - theme: alt
       text: Download for Windows
-      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe
+      link: https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-x64.exe
     - theme: alt
       text: GitHub
       link: https://github.com/krafton-ai/KIRA/tree/main/KiraClaw
@@ -91,8 +91,8 @@ KiraClaw currently includes:
 
 ## Download
 
-- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg)
-- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe)
+- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-arm64.dmg)
+- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-x64.exe)
 
 If macOS warns about the app on first launch, use the steps in [Troubleshooting](/troubleshooting).
 

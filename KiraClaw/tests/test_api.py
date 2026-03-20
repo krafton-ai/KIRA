@@ -140,3 +140,39 @@ def test_run_logs_endpoint_includes_live_records(tmp_path: Path, monkeypatch) ->
     assert body["logs"][0]["run_id"] == "run-live"
     assert body["logs"][0]["state"] == "running"
     assert body["logs"][0]["streamed_text"] == "thinking"
+
+
+def test_desktop_messages_endpoint_drains_inbox(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    get_settings.cache_clear()
+
+    app = create_app()
+    app.router.on_startup.clear()
+    app.router.on_shutdown.clear()
+
+    with TestClient(app) as client:
+        import asyncio
+
+        asyncio.run(
+            app.state.desktop_delivery.send_message(
+                "desktop:local",
+                "Scheduled hello",
+                metadata={"source": "scheduler", "schedule_name": "Daily hello"},
+            )
+        )
+        first = client.get("/v1/desktop-messages", params={"session_id": "desktop:local"})
+        second = client.get("/v1/desktop-messages", params={"session_id": "desktop:local"})
+
+    assert first.status_code == 200
+    assert first.json()["messages"] == [
+        {
+            "id": first.json()["messages"][0]["id"],
+            "session_id": "desktop:local",
+            "text": "Scheduled hello",
+            "created_at": first.json()["messages"][0]["created_at"],
+            "metadata": {"source": "scheduler", "schedule_name": "Daily hello"},
+        }
+    ]
+    assert second.status_code == 200
+    assert second.json()["messages"] == []

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from kiraclaw_agentd.channel_delivery import ChannelDelivery
+from kiraclaw_agentd.desktop_delivery import DEFAULT_DESKTOP_SESSION_ID, DesktopDelivery
 from kiraclaw_agentd.schedule_store import write_schedules
 from kiraclaw_agentd.scheduler_runtime import SchedulerRuntime
 from kiraclaw_agentd.settings import KiraClawSettings
@@ -66,6 +67,22 @@ class FakeDiscordGateway:
 
     async def send_message(self, channel_id: int | str, text: str, reply_to_message_id=None) -> None:
         self.messages.append({"channel_id": channel_id, "text": text, "reply_to_message_id": reply_to_message_id})
+
+
+class FakeDesktopDelivery(DesktopDelivery):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sent: list[dict] = []
+
+    async def send_message(self, session_id: str | None, text: str, metadata: dict | None = None) -> None:
+        await super().send_message(session_id, text, metadata=metadata)
+        self.sent.append(
+            {
+                "session_id": session_id or DEFAULT_DESKTOP_SESSION_ID,
+                "text": text,
+                "metadata": metadata or {},
+            }
+        )
 
 
 def test_scheduler_runtime_executes_due_schedule(tmp_path) -> None:
@@ -225,6 +242,71 @@ def test_scheduler_runtime_can_deliver_to_discord(tmp_path) -> None:
         assert discord_gateway.messages == [{"channel_id": "987654321", "text": "scheduled response", "reply_to_message_id": None}]
         assert slack_gateway.messages == []
         assert telegram_gateway.messages == []
+
+        asyncio.run(scenario())
+
+
+def test_scheduler_runtime_can_deliver_to_desktop(tmp_path) -> None:
+    async def scenario() -> None:
+        schedule_file = tmp_path / "workspace" / "schedule_data" / "schedules.json"
+        write_schedules(
+            schedule_file,
+            [
+                {
+                    "id": "sched-1",
+                    "name": "Desktop shot",
+                    "schedule_type": "date",
+                    "schedule_value": (datetime.now(timezone.utc) + timedelta(milliseconds=300)).isoformat(),
+                    "user": "U123",
+                    "text": "Summarize the update",
+                    "channel_type": "desktop",
+                    "channel_target": DEFAULT_DESKTOP_SESSION_ID,
+                    "is_enabled": True,
+                }
+            ],
+        )
+
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+            mcp_enabled=True,
+            mcp_scheduler_enabled=True,
+            schedule_file=schedule_file,
+        )
+        session_manager = FakeSessionManager()
+        slack_gateway = FakeSlackGateway()
+        telegram_gateway = FakeTelegramGateway()
+        desktop_delivery = FakeDesktopDelivery()
+        runtime = SchedulerRuntime(
+            settings,
+            session_manager,
+            ChannelDelivery(
+                slack_gateway=slack_gateway,
+                telegram_gateway=telegram_gateway,
+                desktop_delivery=desktop_delivery,
+            ),
+        )
+
+        try:
+            await runtime.start()
+            await asyncio.sleep(1.0)
+        finally:
+            await runtime.stop()
+
+        assert runtime.last_error is None
+        assert desktop_delivery.sent == [
+            {
+                "session_id": DEFAULT_DESKTOP_SESSION_ID,
+                "text": "scheduled response",
+                "metadata": {
+                    "source": "scheduler",
+                    "schedule_id": "sched-1",
+                    "schedule_name": "Desktop shot",
+                },
+            }
+        ]
 
     asyncio.run(scenario())
 

@@ -46,6 +46,15 @@ function appendChatMessage(state, role, text, { meta = "", pending = false, pref
   return message;
 }
 
+function buildScheduledMessageMeta(message) {
+  const parts = [t("chat.scheduledMessage")];
+  const scheduleName = String(message?.metadata?.schedule_name || "").trim();
+  if (scheduleName) {
+    parts.push(scheduleName);
+  }
+  return parts.join(" • ");
+}
+
 function replaceChatMessage(message, state, role, text, { meta = "", pending = false, prefix = "" } = {}) {
   if (!message) {
     return;
@@ -232,6 +241,22 @@ async function sendChat({ api, state, onAfterSend }) {
   } finally {
     setChatBusy(false);
     input.focus();
+  }
+}
+
+export function appendDesktopMessages(state, messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return;
+  }
+
+  for (const message of messages) {
+    const text = String(message?.text || "").trim();
+    if (!text) {
+      continue;
+    }
+    appendChatMessage(state, "assistant", text, {
+      meta: buildScheduledMessageMeta(message),
+    });
   }
 }
 

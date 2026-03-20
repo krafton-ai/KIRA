@@ -10,6 +10,11 @@ from typing import Any
 import aiohttp
 from apscheduler.triggers.cron import CronTrigger
 
+from kiraclaw_agentd.delivery_targets import (
+    SUPPORTED_DELIVERY_CHANNEL_TYPES,
+    SUPPORTED_DELIVERY_CHANNEL_TYPE_SET,
+    normalize_delivery_channel,
+)
 from kiraclaw_agentd.mcp_stdio import McpToolSpec, mcp_text_result
 from kiraclaw_agentd.schedule_store import read_schedules, write_schedules
 
@@ -71,16 +76,22 @@ async def add_schedule(args: dict[str, Any]) -> dict[str, Any]:
     if error:
         return mcp_text_result({"success": False, "error": True, "message": error}, is_error=True)
 
-    channel_target = str(args.get("channel_target") or args.get("channel_id") or "").strip()
-    channel_type = str(args.get("channel_type") or "").strip().lower()
+    channel_type, channel_target = normalize_delivery_channel(
+        args.get("channel_type"),
+        args.get("channel_target") or args.get("channel_id"),
+    )
     if not channel_target:
         return mcp_text_result(
             {"success": False, "error": True, "message": "channel_target is required."},
             is_error=True,
         )
-    if channel_type not in {"", "slack", "telegram", "discord"}:
+    if channel_type not in {"", *SUPPORTED_DELIVERY_CHANNEL_TYPE_SET}:
         return mcp_text_result(
-            {"success": False, "error": True, "message": "channel_type must be 'slack', 'telegram', or 'discord'."},
+            {
+                "success": False,
+                "error": True,
+                "message": "channel_type must be 'slack', 'telegram', 'discord', or 'desktop'.",
+            },
             is_error=True,
         )
 
@@ -259,12 +270,12 @@ def build_scheduler_tool_specs() -> list[McpToolSpec]:
                     },
                     "channel_type": {
                         "type": "string",
-                        "enum": ["slack", "telegram", "discord"],
-                        "description": "Delivery channel type. Defaults to 'slack' if omitted.",
+                        "enum": list(SUPPORTED_DELIVERY_CHANNEL_TYPES),
+                        "description": "Delivery channel type. Use 'desktop' to send the result back into Talk. Defaults to 'slack' if omitted.",
                     },
                     "channel_target": {
                         "type": "string",
-                        "description": "Delivery target ID. Slack uses channel ID, Telegram uses chat ID.",
+                        "description": "Delivery target ID. Slack uses channel ID, Telegram uses chat ID. Leave it empty for desktop to use the default Talk session.",
                     },
                     "channel_id": {
                         "type": "string",
@@ -272,7 +283,7 @@ def build_scheduler_tool_specs() -> list[McpToolSpec]:
                     },
                     "is_enabled": {"type": "boolean", "description": "Whether schedule is enabled (default: true)"},
                 },
-                "required": ["name", "schedule_type", "schedule_value", "user_id", "text", "channel_target"],
+                "required": ["name", "schedule_type", "schedule_value", "user_id", "text"],
             },
             handler=add_schedule,
         ),

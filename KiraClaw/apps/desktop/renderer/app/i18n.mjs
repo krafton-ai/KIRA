@@ -85,6 +85,7 @@ const translations = {
       runFailed: "Run failed: {{message}}",
       userLabel: "You",
       emptyInternalSummary: "(empty internal summary)",
+      scheduledMessage: "Scheduled automation",
     },
     channels: {
       title: "Channels",
@@ -351,6 +352,7 @@ const translations = {
       runFailed: "실행 실패: {{message}}",
       userLabel: "나",
       emptyInternalSummary: "(내부 요약 없음)",
+      scheduledMessage: "Scheduled automation",
     },
     channels: {
       title: "채널",

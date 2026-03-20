@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from kiraclaw_agentd.channel_delivery import ChannelDelivery
+from kiraclaw_agentd.delivery_targets import DEFAULT_DESKTOP_SESSION_ID
 from kiraclaw_agentd.schedule_store import ensure_schedule_file, read_schedules
 from kiraclaw_agentd.session_manager import RunRecord, SessionManager
 from kiraclaw_agentd.settings import KiraClawSettings
@@ -123,7 +124,16 @@ class SchedulerRuntime:
         if channel_target:
             result_text = self._result_text(record)
             if result_text:
-                await self.channel_delivery.send_text(channel_type, channel_target, result_text)
+                await self.channel_delivery.send_text(
+                    channel_type,
+                    channel_target,
+                    result_text,
+                    metadata={
+                        "source": "scheduler",
+                        "schedule_id": schedule_id,
+                        "schedule_name": schedule.get("name", ""),
+                    },
+                )
 
     def _result_text(self, record: RunRecord) -> str:
         if record.state == "failed":
@@ -137,6 +147,8 @@ class SchedulerRuntime:
     def _schedule_context_prefix(self, channel_type: str, channel_target: str) -> str:
         target_type = str(channel_type or "slack").strip() or "slack"
         target_value = str(channel_target or "").strip()
+        if target_type == "desktop" and not target_value:
+            target_value = DEFAULT_DESKTOP_SESSION_ID
         if target_value:
             return (
                 "This is a scheduled automation run.\n"

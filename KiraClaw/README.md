@@ -89,8 +89,8 @@ That keeps the product simple, but still leaves room for stronger agent ideas li
 - `Talk`: direct local chat against the same daemon
 - `Channels`: Slack, Telegram, and Discord on the same runtime
 - `Skills`: workspace skills loaded from `Filesystem Base Dir/skills`
-- `Schedules`: time-based automation runs
-- `Logs`: recent run logs, internal summaries, spoken replies, and tool usage
+- `Schedules`: time-based automation runs that can deliver back into Talk or external channels
+- `Logs`: recent live and completed run logs, internal summaries, spoken replies, and tool usage
 
 ### Current runtime rules
 

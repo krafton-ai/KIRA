@@ -1,5 +1,5 @@
 import { applyAgentIdentity } from "./branding.mjs";
-import { clearChatThread, bindChatActions } from "./chat.mjs";
+import { appendDesktopMessages, clearChatThread, bindChatActions } from "./chat.mjs";
 import { byId, initializePasswordToggles, setText } from "./dom.mjs";
 import { updateHomeStatus, bindHomeActions } from "./home.mjs";
 import { bindNavigation } from "./navigation.mjs";
@@ -16,6 +16,7 @@ let engineActionTimer = null;
 let slackRetrieveOauthPollTimer = null;
 let runLogPollTimer = null;
 let updaterPollTimer = null;
+let desktopMessagePollTimer = null;
 
 function syncSlackRetrieveConnectState() {
   const connectButton = byId("connect-slack-retrieve");
@@ -57,6 +58,9 @@ async function refreshActiveView() {
   await refreshRuntime();
   if (state.activeView === "overview") {
     await loadUpdaterState();
+  }
+  if (state.activeView === "chat") {
+    await loadDesktopMessages();
   }
   if (state.activeView === "skills") {
     await loadSkills();
@@ -109,6 +113,27 @@ function stopRunLogPolling() {
     window.clearInterval(runLogPollTimer);
     runLogPollTimer = null;
   }
+}
+
+function stopDesktopMessagePolling() {
+  if (desktopMessagePollTimer) {
+    window.clearInterval(desktopMessagePollTimer);
+    desktopMessagePollTimer = null;
+  }
+}
+
+function startDesktopMessagePolling() {
+  stopDesktopMessagePolling();
+  if (state.activeView !== "chat") {
+    return;
+  }
+
+  desktopMessagePollTimer = window.setInterval(() => {
+    if (document.visibilityState !== "visible" || state.activeView !== "chat") {
+      return;
+    }
+    loadDesktopMessages().catch(() => {});
+  }, 1000);
 }
 
 function startRunLogPolling() {
@@ -284,6 +309,15 @@ async function loadRunLogs() {
   }
 }
 
+async function loadDesktopMessages() {
+  try {
+    const response = await api.getDesktopMessages(DEFAULT_CHAT_SESSION_ID);
+    appendDesktopMessages(state, response.messages || []);
+  } catch {
+    // Ignore transient desktop inbox errors so Talk remains usable.
+  }
+}
+
 async function refreshRuntime() {
   try {
     state.daemonStatus = await api.getDaemonStatus();
@@ -419,10 +453,18 @@ function bindActions() {
       if (viewName === "runs") {
         loadRunLogs().catch(() => {});
       }
+      if (viewName === "chat") {
+        loadDesktopMessages().catch(() => {});
+      }
       if (viewName === "runs") {
         startRunLogPolling();
       } else {
         stopRunLogPolling();
+      }
+      if (viewName === "chat") {
+        startDesktopMessagePolling();
+      } else {
+        stopDesktopMessagePolling();
       }
       if (viewName === "overview") {
         startUpdaterPolling();
@@ -601,4 +643,5 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadRunLogs();
   startUpdaterPolling();
   startRunLogPolling();
+  startDesktopMessagePolling();
 });

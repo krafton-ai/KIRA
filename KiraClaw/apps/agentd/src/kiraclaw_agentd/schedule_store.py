@@ -4,8 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-
-_SUPPORTED_CHANNEL_TYPES = {"slack", "telegram", "discord"}
+from kiraclaw_agentd.delivery_targets import normalize_delivery_channel
 
 
 def ensure_schedule_file(schedule_file: Path) -> None:
@@ -34,15 +33,13 @@ def write_schedules(schedule_file: Path, schedules: list[dict[str, Any]]) -> Non
 def _normalize_schedule(schedule: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(schedule)
 
-    channel_target = str(
+    raw_channel_target = str(
         normalized.get("channel_target")
         or normalized.get("channel")
         or normalized.get("channel_id")
         or ""
     ).strip()
-    channel_type = str(normalized.get("channel_type") or "").strip().lower()
-    if channel_type not in _SUPPORTED_CHANNEL_TYPES:
-        channel_type = "slack" if channel_target else ""
+    channel_type, channel_target = normalize_delivery_channel(normalized.get("channel_type"), raw_channel_target)
 
     normalized["channel_type"] = channel_type or None
     normalized["channel_target"] = channel_target or None

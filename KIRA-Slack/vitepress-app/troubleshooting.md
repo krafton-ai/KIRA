@@ -33,6 +33,21 @@ Use manual migration instead:
 2. Install it as a separate app
 3. Reuse your existing `~/.kira` config if needed
 
+## How updates appear in KiraClaw now
+
+KiraClaw checks for updates:
+
+- once when the app starts
+- again when you enter `Home`
+
+The `Home` screen does not always show a button.
+
+- If you are already current, no update button is shown
+- If a new version is available, `Update to vX` appears
+- After the download finishes, it changes to `Restart to Update`
+
+If you keep the app open for a long time, go back to `Home` to refresh the update state.
+
 ## Slack or Telegram is not responding
 
 Check the desktop app:

@@ -8,8 +8,8 @@ KiraClaw는 가벼운 로컬 코어 엔진에 작은 데스크톱 harness를 얹
 
 ## 1. 다운로드
 
-- macOS (Apple Silicon): [KiraClaw for macOS 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg)
-- Windows: [KiraClaw for Windows 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe)
+- macOS (Apple Silicon): [KiraClaw for macOS 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-arm64.dmg)
+- Windows: [KiraClaw for Windows 다운로드](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-x64.exe)
 
 ## 2. 설치
 

@@ -8,8 +8,8 @@ KiraClaw is designed around a lightweight local core engine with a small desktop
 
 ## 1. Download
 
-- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-arm64.dmg)
-- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.0-x64.exe)
+- macOS (Apple Silicon): [Download KiraClaw for macOS](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-arm64.dmg)
+- Windows: [Download KiraClaw for Windows](https://kira.krafton-ai.com/download/kiraclaw/KiraClaw-0.2.6-x64.exe)
 
 ## 2. Install
 
