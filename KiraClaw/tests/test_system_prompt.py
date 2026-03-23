@@ -13,7 +13,7 @@ def test_system_prompt_keeps_krim_core_rules_but_overrides_identity() -> None:
 
     assert prompt_lines[0] == (
         "You are 지호봇, the active agent persona running inside the KiraClaw product shell "
-        "on the user's local daemon behind desktop and Slack control surfaces."
+        "on the user's local daemon behind desktop and channel control surfaces."
     )
     assert prompt_lines[1] == "You have tools: read, write, edit, bash, grep, glob, submit."
     assert prompt_lines[2:] == krim_lines[2:]
@@ -35,11 +35,13 @@ def test_system_prompt_mentions_skill_only_when_available() -> None:
     )
 
     assert "You have tools: read, write, edit, bash, grep, glob, skill, submit." in prompt
-    assert "Available skills are installed as SKILL.md packages under the workspace skills directory." in prompt
+    assert "Skills are available as optional SKILL.md packages under the workspace skills directory." in prompt
     assert "If you create or install a new skill, place it under Filesystem Base Dir/skills/<skill-name>/SKILL.md." in prompt
-    assert "When a skill is relevant, call the skill tool with the listed skill name to load its full instructions before following it." in prompt
-    assert "Use read only for extra files or resources referenced by the loaded skill instructions." in prompt
-    assert "- jira-reader: Read Jira carefully (skill directory: /workspace/skills/jira-reader)" in prompt
+    assert "If a task may need a specialized workflow, inspect and load the appropriate skill with the skill tool before acting." in prompt
+    assert "Do not assume a skill's contents until you have loaded it." in prompt
+    assert "Use read only for files or resources referenced by the loaded skill instructions." in prompt
+    assert "jira-reader" not in prompt
+    assert "Read Jira carefully" not in prompt
 
 
 def test_system_prompt_mentions_mcp_tools_when_available() -> None:

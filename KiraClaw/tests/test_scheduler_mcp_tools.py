@@ -171,3 +171,27 @@ def test_scheduler_tools_return_warning_when_reload_notification_fails(tmp_path,
         assert "reload pending" in created["message"]
 
     asyncio.run(scenario())
+
+
+def test_scheduler_tools_return_local_time_confirmation_for_cron(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("KIRACLAW_SCHEDULE_FILE", str(tmp_path / "schedules.json"))
+    monkeypatch.setattr("kiraclaw_agentd.scheduler_mcp_tools._notify_scheduler_reload", lambda: asyncio.sleep(0, result=(True, None)))
+
+    async def scenario() -> None:
+        created = _payload(
+            await add_schedule(
+                {
+                    "name": "Nightly report",
+                    "schedule_type": "cron",
+                    "schedule_value": "0 22 * * *",
+                    "user_id": "U123",
+                    "text": "Send nightly report",
+                    "channel_id": "C123",
+                }
+            )
+        )
+        assert created["success"] is True
+        assert "Cron runs in" in created["message"]
+        assert "0 22 * * *" in created["message"]
+
+    asyncio.run(scenario())

@@ -22,6 +22,40 @@ _schedule_file_lock = asyncio.Lock()
 _scheduler_reload_timeout = aiohttp.ClientTimeout(total=2.0)
 
 
+def _local_timezone():
+    return datetime.now().astimezone().tzinfo
+
+
+def _local_timezone_label() -> str:
+    tzinfo = _local_timezone()
+    return str(tzinfo) if tzinfo is not None else "local time"
+
+
+def _format_schedule_confirmation(schedule_type: str, schedule_value: str) -> str | None:
+    local_tz = _local_timezone()
+    if local_tz is None:
+        return None
+
+    if schedule_type == "date":
+        run_date = datetime.fromisoformat(schedule_value.replace("Z", "+00:00"))
+        if run_date.tzinfo is None:
+            run_date = run_date.replace(tzinfo=local_tz)
+        local_run_date = run_date.astimezone(local_tz)
+        return f"Runs at {local_run_date.strftime('%Y-%m-%d %H:%M:%S %Z')}."
+
+    if schedule_type == "cron":
+        trigger = CronTrigger.from_crontab(schedule_value, timezone=local_tz)
+        next_run = trigger.get_next_fire_time(None, datetime.now(local_tz))
+        if next_run is None:
+            return f"Cron runs in {_local_timezone_label()}: {schedule_value}."
+        return (
+            f"Cron runs in {_local_timezone_label()}: {schedule_value} "
+            f"(next: {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')})."
+        )
+
+    return None
+
+
 def _schedule_file() -> Path:
     value = os.environ.get("KIRACLAW_SCHEDULE_FILE", "")
     if value:
@@ -116,6 +150,9 @@ async def add_schedule(args: dict[str, Any]) -> dict[str, Any]:
     message = f"Successfully added schedule: {new_schedule['name']}"
     if not reload_notified and reload_error:
         message = f"{message} (reload pending: {reload_error})"
+    confirmation = _format_schedule_confirmation(new_schedule["schedule_type"], new_schedule["schedule_value"])
+    if confirmation:
+        message = f"{message} {confirmation}"
 
     return mcp_text_result(
         {
@@ -235,6 +272,9 @@ async def update_schedule(args: dict[str, Any]) -> dict[str, Any]:
     message = f"Updated schedule with ID {args['schedule_id']}."
     if not reload_notified and reload_error:
         message = f"{message} (reload pending: {reload_error})"
+    confirmation = _format_schedule_confirmation(schedule.get("schedule_type", ""), schedule.get("schedule_value", ""))
+    if confirmation:
+        message = f"{message} {confirmation}"
 
     return mcp_text_result(
         {
@@ -246,10 +286,15 @@ async def update_schedule(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_scheduler_tool_specs() -> list[McpToolSpec]:
+    timezone_label = _local_timezone_label()
     return [
         McpToolSpec(
             name="add_schedule",
-            description="Adds a new schedule. Supports cron or date type.",
+            description=(
+                "Adds a new schedule. Supports cron or date type. "
+                f"Interpret requested times in {timezone_label}, not UTC. "
+                "For cron, store local wall-clock hours. For one-time dates, prefer timezone-aware ISO with the local offset."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
@@ -261,7 +306,10 @@ def build_scheduler_tool_specs() -> list[McpToolSpec]:
                     },
                     "schedule_value": {
                         "type": "string",
-                        "description": "cron type: cron expression, date type: 'YYYY-MM-DD HH:MM:SS' or ISO format",
+                        "description": (
+                            "cron type: cron expression in local daemon time. "
+                            "date type: 'YYYY-MM-DD HH:MM:SS' or ISO format, preferably timezone-aware with the local offset."
+                        ),
                     },
                     "user_id": {"type": "string", "description": "User ID to receive message when schedule executes"},
                     "text": {
@@ -319,13 +367,21 @@ def build_scheduler_tool_specs() -> list[McpToolSpec]:
         ),
         McpToolSpec(
             name="update_schedule",
-            description="Updates an existing schedule.",
+            description=(
+                "Updates an existing schedule. Keep schedule times in local daemon time unless the user explicitly asked for another timezone."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "schedule_id": {"type": "string", "description": "ID of the schedule to update"},
                     "name": {"type": "string", "description": "New name for the schedule (optional)"},
-                    "schedule_value": {"type": "string", "description": "New schedule value (optional)"},
+                    "schedule_value": {
+                        "type": "string",
+                        "description": (
+                            "New schedule value in local daemon time. "
+                            "Do not silently convert local intended hours into UTC."
+                        ),
+                    },
                     "text": {"type": "string", "description": "New message content (optional)"},
                     "is_enabled": {"type": "boolean", "description": "Whether schedule is enabled (optional)"},
                 },

@@ -16,18 +16,15 @@ _PREFERRED_TOOL_ORDER = [
 
 
 def _format_skill_rows(skill_rows: list[dict[str, str]]) -> str:
-    lines = [
-        "Available skills are installed as SKILL.md packages under the workspace skills directory.",
-        "When a skill is relevant, call the skill tool with the listed skill name to load its full instructions before following it.",
-        "Use read only for extra files or resources referenced by the loaded skill instructions.",
-        "If you create or install a new skill, place it under Filesystem Base Dir/skills/<skill-name>/SKILL.md.",
-    ]
-    for row in skill_rows:
-        name = row.get("name", row.get("id", "unknown"))
-        description = row.get("description", "").strip() or "No description provided."
-        path = row.get("path", "").strip()
-        lines.append(f"- {name}: {description} (skill directory: {path})")
-    return "\n".join(lines)
+    return "\n".join(
+        [
+            "Skills are available as optional SKILL.md packages under the workspace skills directory.",
+            "If a task may need a specialized workflow, inspect and load the appropriate skill with the skill tool before acting.",
+            "Do not assume a skill's contents until you have loaded it.",
+            "Use read only for files or resources referenced by the loaded skill instructions.",
+            "If you create or install a new skill, place it under Filesystem Base Dir/skills/<skill-name>/SKILL.md.",
+        ]
+    )
 
 
 def _ordered_tool_names(tool_names: list[str]) -> list[str]:
@@ -46,7 +43,7 @@ def _identity_line(agent_name: str) -> str:
     active_name = agent_name.strip() or "KIRA"
     return (
         f"You are {active_name}, the active agent persona running inside the KiraClaw product shell "
-        "on the user's local daemon behind desktop and Slack control surfaces."
+        "on the user's local daemon behind desktop and channel control surfaces."
     )
 
 
