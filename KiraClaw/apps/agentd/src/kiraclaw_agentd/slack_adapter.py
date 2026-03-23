@@ -21,6 +21,7 @@ _APP_MENTION_RE = re.compile(r"<@[^>]+>")
 _USER_MENTION_RE = re.compile(r"<@([A-Z0-9]+)>")
 _CHANNEL_MENTION_RE = re.compile(r"<#([CDG][A-Z0-9]+)(?:\|([^>]+))?>")
 _CHANNEL_DEBOUNCE_SECONDS = 5.0
+_SLACK_HISTORY_LIMIT = 20
 
 
 @dataclass
@@ -239,6 +240,7 @@ class SlackGateway:
         self.identity: dict[str, str] = {}
         self._user_name_cache: dict[str, str] = {}
         self._channel_name_cache: dict[str, str] = {}
+        self._retrieve_client: AsyncWebClient | None = None
         self.socket_mode_validated: bool = False
         self._debouncer = KeyedDebouncer[_BufferedSlackEvent](
             delay_seconds=debounce_seconds,
@@ -516,13 +518,26 @@ class SlackGateway:
         }
         delivery_context = _build_delivery_context_prefix(channel, reply_thread_ts)
         context_prefix = delivery_context
-        if not self.session_manager.get_session_records(session_id):
+        is_thread_event = bool(event.get("thread_ts"))
+        should_refresh_bootstrap = not _is_dm(event) or not self.session_manager.get_session_records(session_id)
+        if should_refresh_bootstrap:
             bootstrap_context = await self._build_slack_bootstrap_context(
                 client=client,
                 event=event,
                 excluded_timestamps=excluded_timestamps,
             )
-            context_prefix = _merge_context_prefix(delivery_context, reference_context, bootstrap_context)
+            history_warning = None
+            if not _is_dm(event) and not bootstrap_context:
+                history_warning = (
+                    "Slack channel/thread history from earlier messages could not be loaded for this turn.\n"
+                    "Do not claim you saw earlier channel or thread messages unless you actually retrieved them."
+                )
+            context_prefix = _merge_context_prefix(
+                delivery_context,
+                reference_context,
+                bootstrap_context,
+                history_warning,
+            )
         else:
             context_prefix = _merge_context_prefix(delivery_context, reference_context)
         record = await self.session_manager.run(
@@ -598,12 +613,57 @@ class SlackGateway:
         *,
         excluded_timestamps: set[str] | None = None,
     ) -> list[dict[str, Any]]:
+        try:
+            messages = await self._fetch_bootstrap_messages_with_client(
+                client,
+                event,
+                excluded_timestamps=excluded_timestamps,
+            )
+            if messages:
+                logger.info(
+                    "Loaded Slack bootstrap history with channel token: channel=%s thread_ts=%s count=%s",
+                    event.get("channel"),
+                    event.get("thread_ts"),
+                    len(messages),
+                )
+                return messages
+        except Exception as exc:
+            logger.warning("Failed to fetch Slack history bootstrap with channel token: %s", exc)
+
+        retrieve_client = self._get_retrieve_client()
+        if retrieve_client is not None:
+            try:
+                messages = await self._fetch_bootstrap_messages_with_client(
+                    retrieve_client,
+                    event,
+                    excluded_timestamps=excluded_timestamps,
+                )
+                if messages:
+                    logger.info(
+                        "Loaded Slack bootstrap history with retrieve token: channel=%s thread_ts=%s count=%s",
+                        event.get("channel"),
+                        event.get("thread_ts"),
+                        len(messages),
+                    )
+                    return messages
+            except Exception as exc:
+                logger.warning("Failed to fetch Slack history bootstrap with retrieve token: %s", exc)
+
+        return []
+
+    async def _fetch_bootstrap_messages_with_client(
+        self,
+        client,
+        event: dict[str, Any],
+        *,
+        excluded_timestamps: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
         excluded = excluded_timestamps or set()
         current_ts = event.get("ts")
         if _is_dm(event):
             response = await client.conversations_history(
                 channel=event["channel"],
-                limit=8,
+                limit=_SLACK_HISTORY_LIMIT,
                 latest=current_ts,
                 inclusive=False,
             )
@@ -616,23 +676,45 @@ class SlackGateway:
             ]
 
         thread_ts = event.get("thread_ts")
-        if not thread_ts:
-            return []
+        if thread_ts:
+            response = await client.conversations_replies(
+                channel=event["channel"],
+                ts=thread_ts,
+                latest=current_ts,
+                inclusive=False,
+                limit=_SLACK_HISTORY_LIMIT,
+            )
+            current_value = _ts_value(current_ts)
+            return [
+                message
+                for message in response.get("messages", [])
+                if (
+                    (message.get("text") or message.get("files"))
+                    and _ts_value(message.get("ts")) < current_value
+                    and str(message.get("ts")) not in excluded
+                )
+            ]
 
-        response = await client.conversations_replies(
+        response = await client.conversations_history(
             channel=event["channel"],
-            ts=thread_ts,
+            limit=_SLACK_HISTORY_LIMIT,
+            latest=current_ts,
+            inclusive=False,
         )
-        current_value = _ts_value(current_ts)
+        messages = response.get("messages", [])
+        messages.reverse()
         return [
             message
-            for message in response.get("messages", [])
-            if (
-                (message.get("text") or message.get("files"))
-                and _ts_value(message.get("ts")) < current_value
-                and str(message.get("ts")) not in excluded
-            )
+            for message in messages
+            if (message.get("text") or message.get("files")) and str(message.get("ts")) not in excluded
         ]
+
+    def _get_retrieve_client(self) -> AsyncWebClient | None:
+        if not (self.settings.slack_retrieve_enabled and self.settings.slack_retrieve_token):
+            return None
+        if self._retrieve_client is None:
+            self._retrieve_client = AsyncWebClient(token=self.settings.slack_retrieve_token)
+        return self._retrieve_client
 
     async def _speaker_for_message(self, client, message: dict[str, Any]) -> str:
         user_id = message.get("user")

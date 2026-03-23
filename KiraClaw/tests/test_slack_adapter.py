@@ -162,6 +162,33 @@ def test_build_slack_bootstrap_context_formats_recent_dm_history(tmp_path) -> No
     asyncio.run(scenario())
 
 
+def test_build_slack_bootstrap_context_formats_recent_channel_history(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        context = await gateway._build_slack_bootstrap_context(
+            client,
+            {"channel": "C1", "channel_type": "channel", "ts": "103.0"},
+        )
+
+        assert context is not None
+        lines = context.splitlines()
+        assert lines[0] == "Slack conversation history from this thread/channel before the current request:"
+        assert lines[1] == "Jiho Jeon: first question"
+        assert lines[2] == "KIRA: previous answer"
+        assert lines[3] == "Alice: second question"
+
+    asyncio.run(scenario())
+
+
 def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_path) -> None:
     async def scenario() -> None:
         settings = KiraClawSettings(
@@ -223,6 +250,138 @@ def test_run_for_event_bootstraps_only_when_session_has_no_local_records(tmp_pat
     asyncio.run(scenario())
 
 
+def test_run_for_channel_event_refreshes_bootstrap_even_with_local_records(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        session_manager = _FakeSessionManager(
+            records=[
+                RunRecord(
+                    run_id="existing",
+                    session_id="slack:C1:main",
+                    state="completed",
+                    prompt="older",
+                    created_at="2026-01-01T00:00:00Z",
+                    finished_at="2026-01-01T00:00:01Z",
+                    result=RunResult(final_response="older answer", streamed_text="older answer"),
+                )
+            ]
+        )
+        gateway = SlackGateway(session_manager, settings)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return "Slack bootstrap"
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event = {"channel": "C1", "channel_type": "channel", "ts": "202.0"}
+        await gateway._run_for_event(
+            event=event,
+            session_id="slack:C1:main",
+            channel="C1",
+            reply_thread_ts="202.0",
+            user="U1",
+            user_name="Jiho Jeon",
+            prompt="channel question",
+            mention=False,
+            client=client,
+        )
+
+        assert "Slack bootstrap" in session_manager.calls[0]["context_prefix"]
+
+    asyncio.run(scenario())
+
+
+def test_run_for_thread_event_refreshes_bootstrap_even_with_local_records(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        session_manager = _FakeSessionManager(
+            records=[
+                RunRecord(
+                    run_id="existing",
+                    session_id="slack:C1:200.0",
+                    state="completed",
+                    prompt="older",
+                    created_at="2026-01-01T00:00:00Z",
+                    finished_at="2026-01-01T00:00:01Z",
+                    result=RunResult(final_response="older answer", streamed_text="older answer"),
+                )
+            ]
+        )
+        gateway = SlackGateway(session_manager, settings)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return "Slack bootstrap"
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event = {"channel": "C1", "channel_type": "channel", "thread_ts": "200.0", "ts": "202.0"}
+        await gateway._run_for_event(
+            event=event,
+            session_id="slack:C1:200.0",
+            channel="C1",
+            reply_thread_ts="200.0",
+            user="U1",
+            user_name="Jiho Jeon",
+            prompt="thread question",
+            mention=False,
+            client=client,
+        )
+
+        assert "Slack bootstrap" in session_manager.calls[0]["context_prefix"]
+
+    asyncio.run(scenario())
+
+
+def test_run_for_thread_event_warns_when_history_unavailable(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = SlackGateway(session_manager, settings)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def fake_bootstrap_context(*, client, event, excluded_timestamps=None):
+            return None
+
+        gateway._build_slack_bootstrap_context = fake_bootstrap_context  # type: ignore[method-assign]
+
+        event = {"channel": "C1", "channel_type": "channel", "thread_ts": "200.0", "ts": "202.0"}
+        await gateway._run_for_event(
+            event=event,
+            session_id="slack:C1:200.0",
+            channel="C1",
+            reply_thread_ts="200.0",
+            user="U1",
+            user_name="Jiho Jeon",
+            prompt="thread question",
+            mention=False,
+            client=client,
+        )
+
+        assert "could not be loaded for this turn" in session_manager.calls[0]["context_prefix"]
+
+    asyncio.run(scenario())
+
+
 def test_build_slack_bootstrap_context_for_thread_excludes_current_message(tmp_path) -> None:
     async def scenario() -> None:
         settings = KiraClawSettings(
@@ -244,6 +403,40 @@ def test_build_slack_bootstrap_context_for_thread_excludes_current_message(tmp_p
         assert "Jiho Jeon: thread start" in context
         assert "KIRA: thread answer" in context
         assert "current question" not in context
+
+    asyncio.run(scenario())
+
+
+def test_build_slack_bootstrap_context_falls_back_to_retrieve_token(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+            slack_retrieve_enabled=True,
+            slack_retrieve_token="xoxp-test",
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        gateway.identity = {"user_id": "UBOT"}
+        client = _FakeSlackClient()
+
+        async def broken_replies(**_kwargs) -> dict:
+            raise RuntimeError("bot token cannot read thread")
+
+        client.conversations_replies = broken_replies  # type: ignore[method-assign]
+
+        retrieve_client = _FakeSlackClient()
+        gateway._get_retrieve_client = lambda: retrieve_client  # type: ignore[method-assign]
+
+        context = await gateway._build_slack_bootstrap_context(
+            client,
+            {"channel": "C1", "channel_type": "channel", "thread_ts": "200.0", "ts": "202.0"},
+        )
+
+        assert context is not None
+        assert "Jiho Jeon: thread start" in context
+        assert "KIRA: thread answer" in context
 
     asyncio.run(scenario())
 

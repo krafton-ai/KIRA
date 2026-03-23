@@ -207,7 +207,13 @@ def _format_attachment_prompt(files: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def _build_message_prompt(message: dict[str, Any], bot_username: str | None, *, mention: bool, agent_name: str | None = None) -> str:
+def _build_base_message_prompt(
+    message: dict[str, Any],
+    bot_username: str | None,
+    *,
+    mention: bool,
+    agent_name: str | None = None,
+) -> str:
     text = _clean_prompt_text(
         _base_message_text(message),
         bot_username,
@@ -216,6 +222,34 @@ def _build_message_prompt(message: dict[str, Any], bot_username: str | None, *, 
     )
     attachments = _format_attachment_prompt(_extract_attachment_metadata(message))
     return _merge_context_prefix(text, attachments) or ""
+
+
+def _format_reply_context(message: dict[str, Any], bot_username: str | None, agent_name: str | None = None) -> str:
+    reply = message.get("reply_to_message")
+    if not isinstance(reply, dict):
+        return ""
+
+    prompt = _build_base_message_prompt(reply, bot_username, mention=False, agent_name=agent_name)
+    if not prompt:
+        return ""
+
+    prompt_lines = prompt.splitlines()
+    lines = ["Replied-to Telegram message:"]
+    lines.append(prompt_lines[0])
+    for continuation in prompt_lines[1:]:
+        lines.append(f"  {continuation}")
+    return "\n".join(lines)
+
+
+def _build_message_prompt(message: dict[str, Any], bot_username: str | None, *, mention: bool, agent_name: str | None = None) -> str:
+    base_prompt = _build_base_message_prompt(
+        message,
+        bot_username,
+        mention=mention,
+        agent_name=agent_name,
+    )
+    reply_context = _format_reply_context(message, bot_username, agent_name=agent_name)
+    return _merge_context_prefix(reply_context, base_prompt) or ""
 
 
 def _is_human_message(message: dict[str, Any]) -> bool:

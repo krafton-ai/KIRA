@@ -27,9 +27,17 @@ class _FakeUser:
 
 
 class _FakeChannel:
-    def __init__(self, channel_id: int, name: str | None = None) -> None:
+    def __init__(self, channel_id: int, name: str | None = None, history_messages: list[object] | None = None) -> None:
         self.id = channel_id
         self.name = name or str(channel_id)
+        self._history_messages = list(history_messages or [])
+
+    def history(self, **_kwargs):
+        async def generator():
+            for message in self._history_messages:
+                yield message
+
+        return generator()
 
 
 class _FakeRole:
@@ -52,8 +60,9 @@ class _FakeMessage:
         mentions: list[object] | None = None,
         channel_mentions: list[object] | None = None,
         role_mentions: list[object] | None = None,
+        channel: _FakeChannel | None = None,
     ) -> None:
-        self.channel = _FakeChannel(channel_id)
+        self.channel = channel or _FakeChannel(channel_id)
         self.id = message_id
         self.content = content
         self.author = author
@@ -198,6 +207,70 @@ def test_discord_run_for_message_uses_session_manager_and_publish(tmp_path) -> N
 
         assert session_manager.calls[0]["metadata"]["source"] == "discord-dm"
         assert "channel_id: 123" in session_manager.calls[0]["context_prefix"]
+        assert sent == [{"channel_id": 123, "text": "discord ok", "reply_to_message_id": 50}]
+
+    asyncio.run(scenario())
+
+
+def test_discord_run_for_group_message_includes_recent_channel_history(tmp_path) -> None:
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=False,
+            discord_enabled=False,
+        )
+        session_manager = _FakeSessionManager()
+        gateway = DiscordGateway(session_manager, settings)
+        gateway.identity = {"id": 999, "name": "kira"}
+        sent: list[dict] = []
+
+        async def fake_send(channel_id, text, reply_to_message_id=None):
+            sent.append({"channel_id": channel_id, "text": text, "reply_to_message_id": reply_to_message_id})
+
+        gateway.send_message = fake_send  # type: ignore[method-assign]
+
+        history_messages = [
+            _FakeMessage(
+                channel_id=123,
+                message_id=40,
+                content="earlier question",
+                author=_FakeUser(user_id=10, name="jiho", display_name="Jiho"),
+                guild=object(),
+            ),
+            _FakeMessage(
+                channel_id=123,
+                message_id=41,
+                content="earlier answer",
+                author=_FakeUser(user_id=999, name="kira", display_name="KIRA", bot=True),
+                guild=object(),
+            ),
+        ]
+        channel = _FakeChannel(123, history_messages=history_messages)
+        message = _FakeMessage(
+            channel_id=123,
+            message_id=50,
+            content="current question",
+            author=_FakeUser(user_id=10, name="jiho", display_name="Jiho"),
+            guild=object(),
+            channel=channel,
+        )
+
+        await gateway._run_for_message(
+            message=message,
+            session_id="discord:123:main",
+            channel_id=123,
+            reply_to_message_id=50,
+            prompt="current question",
+            user_name="Jiho",
+            mention=False,
+        )
+
+        context_prefix = session_manager.calls[0]["context_prefix"]
+        assert "Discord conversation history from this channel/thread before the current request:" in context_prefix
+        assert "Jiho: earlier question" in context_prefix
+        assert f"{settings.agent_name}: earlier answer" in context_prefix
         assert sent == [{"channel_id": 123, "text": "discord ok", "reply_to_message_id": 50}]
 
     asyncio.run(scenario())

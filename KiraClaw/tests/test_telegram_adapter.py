@@ -5,6 +5,7 @@ from kiraclaw_agentd.settings import KiraClawSettings
 from kiraclaw_agentd.telegram_adapter import (
     TelegramGateway,
     _build_delivery_context_prefix,
+    _build_message_prompt,
     _clean_prompt_text,
     _display_name,
     _is_authorized_user_name,
@@ -28,6 +29,28 @@ def test_matchable_name_includes_username_and_full_name() -> None:
 def test_telegram_prompt_cleanup_strips_bot_mention() -> None:
     assert _clean_prompt_text("  @kira_bot   check   this  ", "kira_bot", mention=True, agent_name="세나") == "세나 check this"
     assert _clean_prompt_text("  hello   there ", "kira_bot", mention=False) == "hello there"
+
+
+def test_telegram_build_message_prompt_includes_replied_message_context() -> None:
+    prompt = _build_message_prompt(
+        {
+            "chat": {"id": -1, "type": "group"},
+            "from": {"id": 10, "is_bot": False},
+            "text": "@kira_bot 합산해줘",
+            "reply_to_message": {
+                "chat": {"id": -1, "type": "group"},
+                "from": {"id": 11, "is_bot": False},
+                "text": "이전 금액은 1000원",
+            },
+        },
+        "kira_bot",
+        mention=True,
+        agent_name="세나",
+    )
+
+    assert "Replied-to Telegram message:" in prompt
+    assert "이전 금액은 1000원" in prompt
+    assert "세나 합산해줘" in prompt
 
 
 def test_is_human_message_filters_bot_messages() -> None:

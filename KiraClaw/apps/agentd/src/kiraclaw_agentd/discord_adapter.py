@@ -17,6 +17,7 @@ from kiraclaw_agentd.tool_event_summary import append_tool_summary
 
 logger = logging.getLogger(__name__)
 _CHANNEL_DEBOUNCE_SECONDS = 5.0
+_DISCORD_HISTORY_LIMIT = 20
 _DISCORD_MESSAGE_URL = "https://discord.com/api/v10/channels/{channel_id}/messages"
 _DISCORD_USER_MENTION_RE = re.compile(r"<@!?(\d+)>")
 _DISCORD_CHANNEL_MENTION_RE = re.compile(r"<#(\d+)>")
@@ -251,6 +252,18 @@ def _merge_prompt_text(items: list[_BufferedDiscordMessage]) -> str:
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
+async def _collect_discord_history(message: Any, *, limit: int = _DISCORD_HISTORY_LIMIT) -> list[Any]:
+    channel = getattr(message, "channel", None)
+    history = getattr(channel, "history", None)
+    if channel is None or history is None:
+        return []
+
+    collected: list[Any] = []
+    async for history_message in history(limit=limit, before=message, oldest_first=True):
+        collected.append(history_message)
+    return collected
+
+
 def _is_human_message(message: Any) -> bool:
     author = getattr(message, "author", None)
     if author is None or bool(getattr(author, "bot", False)):
@@ -458,7 +471,17 @@ class DiscordGateway:
             "user": str(getattr(getattr(message, "author", None), "id", "")),
             "user_name": user_name,
         }
-        context_prefix = _build_delivery_context_prefix(channel_id, reply_to_message_id)
+        delivery_context = _build_delivery_context_prefix(channel_id, reply_to_message_id)
+        context_prefix = delivery_context
+        if not _is_private_message(message):
+            bootstrap_context = await self._build_discord_bootstrap_context(message)
+            history_warning = None
+            if not bootstrap_context:
+                history_warning = (
+                    "Discord channel/thread history from earlier messages could not be loaded for this turn.\n"
+                    "Do not claim you saw earlier channel or thread messages unless you actually retrieved them."
+                )
+            context_prefix = _merge_context_prefix(delivery_context, bootstrap_context, history_warning)
         record = await self.session_manager.run(
             session_id=session_id,
             prompt=prompt,
@@ -466,6 +489,40 @@ class DiscordGateway:
             metadata=metadata,
         )
         await self._publish_result(channel_id, reply_to_message_id, record)
+
+    async def _build_discord_bootstrap_context(self, message: Any) -> str | None:
+        try:
+            messages = await _collect_discord_history(message)
+        except Exception as exc:
+            logger.warning("Failed to fetch Discord history bootstrap: %s", exc)
+            return None
+
+        if not messages:
+            return None
+
+        bot_user_id = self.identity.get("id")
+        lines = ["Discord conversation history from this channel/thread before the current request:"]
+        for history_message in messages:
+            prompt = _build_message_prompt(
+                history_message,
+                bot_user_id,
+                mention=False,
+                agent_name=self.settings.agent_name,
+            )
+            if not prompt:
+                continue
+
+            author = getattr(history_message, "author", None)
+            if str(getattr(author, "id", "")) == str(bot_user_id or ""):
+                speaker = self.settings.agent_name
+            else:
+                speaker = _display_name(author)
+            prompt_lines = prompt.splitlines()
+            lines.append(f"{speaker}: {prompt_lines[0]}")
+            for continuation in prompt_lines[1:]:
+                lines.append(f"  {continuation}")
+
+        return "\n".join(lines) if len(lines) > 1 else None
 
     async def _publish_result(
         self,
