@@ -252,6 +252,7 @@ def create_app() -> FastAPI:
     )
 
     app = FastAPI(title="KiraClaw Agentd", version=_agentd_version())
+    app.state.engine = engine
     app.state.session_manager = session_manager
     app.state.memory_runtime = memory_runtime
     app.state.slack_gateway = slack_gateway
@@ -337,6 +338,33 @@ def create_app() -> FastAPI:
             event_type="memory.runtime",
             message=f"Memory runtime -> {memory_runtime.state}",
         )
+        active_process_ids: set[str] = set()
+        for process_snapshot in engine.process_manager.list_sessions():
+            process_id = str(process_snapshot.get("session_id") or "").strip()
+            if not process_id:
+                continue
+            active_process_ids.add(process_id)
+            daemon_plane.upsert_resource(
+                "process",
+                process_id,
+                str(process_snapshot.get("status") or "unknown"),
+                data=dict(process_snapshot),
+                event_type="process.runtime",
+                message=f"Background process {process_id} -> {process_snapshot.get('status') or 'unknown'}",
+            )
+
+        known_process_ids = {
+            str(resource.get("id") or "").strip()
+            for resource in daemon_plane.resources.list(kind="process")
+            if str(resource.get("id") or "").strip()
+        }
+        for process_id in known_process_ids - active_process_ids:
+            daemon_plane.remove_resource(
+                "process",
+                process_id,
+                event_type="process.removed",
+                message=f"Background process {process_id} removed",
+            )
 
     @app.on_event("startup")
     async def startup() -> None:

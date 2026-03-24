@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+import time
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
@@ -218,3 +220,29 @@ def test_daemon_events_endpoint_returns_resource_events(tmp_path: Path, monkeypa
     assert body["events"]
     assert body["events"][0]["resource_kind"] == "gateway"
     assert body["daemon_event_file"].endswith("daemon-events.jsonl")
+
+
+def test_resources_endpoint_refreshes_background_process_status(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    get_settings.cache_clear()
+
+    app = create_app()
+    app.router.on_startup.clear()
+    app.router.on_shutdown.clear()
+
+    command = f'"{sys.executable}" -c "import time; print(\'done\'); time.sleep(0.1)"'
+
+    with TestClient(app) as client:
+        session = app.state.engine.process_manager.start(
+            command=command,
+            owner_session_id="desktop:test",
+        )
+        time.sleep(0.2)
+        response = client.get("/v1/resources")
+
+    assert response.status_code == 200
+    body = response.json()
+    resources = {(row["kind"], row["id"]): row for row in body["resources"]}
+    process_resource = resources[("process", session.session_id)]
+    assert process_resource["state"] == "completed"
