@@ -160,9 +160,18 @@ class BackgroundProcessManager:
         self._refresh_status(session)
         return session.status != "running"
 
-    def list_sessions(self, *, tail_chars: int | None = None) -> list[dict[str, object]]:
+    def list_sessions(
+        self,
+        *,
+        tail_chars: int | None = None,
+        owner_session_id: str | None = None,
+    ) -> list[dict[str, object]]:
         with self._lock:
             sessions = list(self._sessions.values())
+
+        owner = str(owner_session_id or "").strip()
+        if owner:
+            sessions = [session for session in sessions if session.owner_session_id == owner]
 
         rows = [
             self._snapshot(self._refresh_status(session), tail_chars=tail_chars or min(self._max_output_chars, 4_000))
@@ -171,24 +180,36 @@ class BackgroundProcessManager:
         rows.sort(key=lambda row: str(row.get("started_at") or ""), reverse=True)
         return rows
 
-    def poll(self, session_id: str, *, tail_chars: int | None = None) -> dict[str, object]:
-        session = self._refresh_status(self._get_session(session_id))
+    def poll(
+        self,
+        session_id: str,
+        *,
+        tail_chars: int | None = None,
+        owner_session_id: str | None = None,
+    ) -> dict[str, object]:
+        session = self._refresh_status(self._get_session(session_id, owner_session_id=owner_session_id))
         return self._snapshot(session, tail_chars=tail_chars or self._max_output_chars)
 
-    def log(self, session_id: str, *, tail_chars: int | None = None) -> dict[str, object]:
-        session = self._refresh_status(self._get_session(session_id))
+    def log(
+        self,
+        session_id: str,
+        *,
+        tail_chars: int | None = None,
+        owner_session_id: str | None = None,
+    ) -> dict[str, object]:
+        session = self._refresh_status(self._get_session(session_id, owner_session_id=owner_session_id))
         return self._snapshot(session, tail_chars=tail_chars or self._max_output_chars)
 
-    def kill(self, session_id: str) -> dict[str, object]:
-        session = self._get_session(session_id)
+    def kill(self, session_id: str, *, owner_session_id: str | None = None) -> dict[str, object]:
+        session = self._get_session(session_id, owner_session_id=owner_session_id)
         session.kill_requested = True
         if session.process.poll() is None:
             self._terminate_process(session.process)
         session = self._refresh_status(session)
         return self._snapshot(session, tail_chars=self._max_output_chars)
 
-    def clear(self, session_id: str) -> None:
-        session = self._refresh_status(self._get_session(session_id))
+    def clear(self, session_id: str, *, owner_session_id: str | None = None) -> None:
+        session = self._refresh_status(self._get_session(session_id, owner_session_id=owner_session_id))
         if session.status == "running":
             raise ValueError("cannot_clear_running_process")
         snapshot = self._snapshot(session, tail_chars=self._max_output_chars)
@@ -232,13 +253,16 @@ class BackgroundProcessManager:
             raise ValueError(f"invalid_cwd: {resolved}")
         return resolved
 
-    def _get_session(self, session_id: str) -> ProcessSession:
+    def _get_session(self, session_id: str, *, owner_session_id: str | None = None) -> ProcessSession:
         key = str(session_id or "").strip()
         if not key:
             raise KeyError("missing_session_id")
         with self._lock:
             session = self._sessions.get(key)
         if session is None:
+            raise KeyError(f"unknown_session_id: {key}")
+        owner = str(owner_session_id or "").strip()
+        if owner and session.owner_session_id != owner:
             raise KeyError(f"unknown_session_id: {key}")
         return session
 

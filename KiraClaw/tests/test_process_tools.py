@@ -192,3 +192,51 @@ def test_process_manager_emits_started_and_finished_events(tmp_path) -> None:
     actions = [action for action, _snapshot in events]
     assert "started" in actions
     assert "finished" in actions
+
+
+def test_process_tool_is_scoped_to_the_current_owner_session(tmp_path) -> None:
+    settings = KiraClawSettings(
+        data_dir=tmp_path / "data",
+        workspace_dir=tmp_path / "workspace",
+        home_mode="modern",
+        slack_enabled=False,
+    )
+    settings.ensure_directories()
+    manager = _build_manager(settings)
+
+    tools_a = {
+        tool.name: tool
+        for tool in build_process_tools(
+            settings,
+            tool_context={
+                "__process_manager__": manager,
+                "session_id": "desktop:alpha",
+            },
+        )
+    }
+    tools_b = {
+        tool.name: tool
+        for tool in build_process_tools(
+            settings,
+            tool_context={
+                "__process_manager__": manager,
+                "session_id": "desktop:beta",
+            },
+        )
+    }
+
+    started = json.loads(
+        tools_a["exec"].run(
+            command=_python_command("import time; print('secret'); time.sleep(0.2)"),
+            yield_ms=10,
+        )
+    )
+    session_id = started["session_id"]
+
+    listed = json.loads(tools_b["process"].run(action="list"))
+    assert listed["success"] is True
+    assert listed["sessions"] == []
+
+    polled = json.loads(tools_b["process"].run(action="poll", session_id=session_id))
+    assert polled["success"] is False
+    assert "unknown_session_id" in polled["error"]

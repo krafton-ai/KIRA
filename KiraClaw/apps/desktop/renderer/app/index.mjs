@@ -333,7 +333,7 @@ async function loadDaemonPlane() {
     state.daemonEvents = eventsResponse.events || [];
     state.daemonEventFile = eventsResponse.daemon_event_file || "";
     state.daemonEventError = "";
-    renderRunLogsState(state);
+    renderDaemonPlaneState(state);
   } catch (error) {
     state.daemonResources = [];
     state.daemonResourceCounts = {};
@@ -341,7 +341,7 @@ async function loadDaemonPlane() {
     state.daemonEvents = [];
     state.daemonEventFile = "";
     state.daemonEventError = error.message;
-    renderRunLogsState(state);
+    renderDaemonPlaneState(state);
   }
 }
 

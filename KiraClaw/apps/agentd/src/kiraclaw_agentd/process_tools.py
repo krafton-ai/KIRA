@@ -131,8 +131,12 @@ class ProcessTool(Tool):
         },
     }
 
-    def __init__(self, manager: BackgroundProcessManager) -> None:
+    def __init__(self, manager: BackgroundProcessManager, tool_context: dict[str, Any] | None = None) -> None:
         self._manager = manager
+        self._tool_context = dict(tool_context or {})
+
+    def _owner_session_id(self) -> str:
+        return str(self._tool_context.get("session_id") or "").strip()
 
     def run(
         self,
@@ -141,29 +145,51 @@ class ProcessTool(Tool):
         tail_chars: int | None = None,
     ) -> str:
         normalized = str(action or "").strip().lower()
+        owner_session_id = self._owner_session_id()
         try:
             if normalized == "list":
-                return _build_result(True, action=normalized, sessions=self._manager.list_sessions(tail_chars=tail_chars))
+                return _build_result(
+                    True,
+                    action=normalized,
+                    sessions=self._manager.list_sessions(
+                        tail_chars=tail_chars,
+                        owner_session_id=owner_session_id,
+                    ),
+                )
             if normalized == "poll":
                 return _build_result(
                     True,
                     action=normalized,
-                    session=self._manager.poll(str(session_id or "").strip(), tail_chars=tail_chars),
+                    session=self._manager.poll(
+                        str(session_id or "").strip(),
+                        tail_chars=tail_chars,
+                        owner_session_id=owner_session_id,
+                    ),
                 )
             if normalized == "log":
                 return _build_result(
                     True,
                     action=normalized,
-                    session=self._manager.log(str(session_id or "").strip(), tail_chars=tail_chars),
+                    session=self._manager.log(
+                        str(session_id or "").strip(),
+                        tail_chars=tail_chars,
+                        owner_session_id=owner_session_id,
+                    ),
                 )
             if normalized == "kill":
                 return _build_result(
                     True,
                     action=normalized,
-                    session=self._manager.kill(str(session_id or "").strip()),
+                    session=self._manager.kill(
+                        str(session_id or "").strip(),
+                        owner_session_id=owner_session_id,
+                    ),
                 )
             if normalized == "clear":
-                self._manager.clear(str(session_id or "").strip())
+                self._manager.clear(
+                    str(session_id or "").strip(),
+                    owner_session_id=owner_session_id,
+                )
                 return _build_result(True, action=normalized, session_id=str(session_id or "").strip())
         except (KeyError, ValueError) as exc:
             return _build_result(False, error=str(exc), action=normalized)
@@ -180,4 +206,4 @@ def build_process_tools(
     manager = context.get(_PROCESS_MANAGER_KEY)
     if not isinstance(manager, BackgroundProcessManager):
         return []
-    return [ExecTool(manager, context), ProcessTool(manager)]
+    return [ExecTool(manager, context), ProcessTool(manager, context)]
