@@ -86,9 +86,8 @@ def test_system_prompt_marks_channel_tools_as_delivery_only() -> None:
     )
 
     assert "Channel tools are delivery/control tools, not retrieval tools." in prompt
-    assert "Do not use channel tools to ask humans for information" in prompt
+    assert "not to ask humans for information that should be gathered via MCP" in prompt
     assert "wider workspace search or investigation belongs to MCP/retrieval paths" in prompt
-    assert "reuse that surfaced reference before asking follow-up questions" in prompt
 
 
 def test_system_prompt_mentions_exec_and_process_guidance_when_available() -> None:
@@ -135,7 +134,7 @@ def test_system_prompt_mentions_memory_index_first_flow_when_available() -> None
     assert "For anything beyond brief small talk or a one-off factual answer" in prompt
     assert "If retrieved memory is present, treat it as first-class context" in prompt
     assert "After you speak or complete an important action, deliberately save salient durable memory" in prompt
-    assert "do not rewrite index.json with normal file tools" in prompt
+    assert "Prefer memory index tools over manually editing index.json" in prompt
 
 
 def test_system_prompt_includes_persona_guidance_when_present() -> None:

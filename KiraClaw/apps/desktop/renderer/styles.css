@@ -1668,20 +1668,24 @@ button:disabled {
 }
 
 .diagnostics-event-section {
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 .diagnostics-event-layout {
   display: grid;
   grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
   gap: var(--space-3);
-  max-height: min(62vh, 720px);
-  min-height: 360px;
+  height: clamp(360px, 62vh, 720px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .diagnostics-event-feed,
 .diagnostics-event-inspector {
   min-height: 0;
+  height: 100%;
 }
 
 .diagnostics-event-feed {
@@ -1690,7 +1694,7 @@ button:disabled {
 }
 
 .diagnostics-event-list {
-  min-height: 100%;
+  min-height: 0;
 }
 
 .daemon-resource-head,
@@ -1987,7 +1991,7 @@ button:disabled {
 @media (max-width: 960px) {
   .diagnostics-event-layout {
     grid-template-columns: 1fr;
-    max-height: none;
+    height: auto;
   }
 
   .diagnostics-event-feed {

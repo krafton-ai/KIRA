@@ -69,17 +69,14 @@ def _format_memory_tool_guidance(tool_names: list[str]) -> str | None:
 
     return (
         "Long-term memory lives under Filesystem Base Dir/memories, and its structured index lives in Filesystem Base Dir/memories/index.json.\n"
-        "For anything beyond brief small talk or a one-off factual answer, prefer to ground your response in relevant memory when it exists.\n"
-        "If retrieved memory is present, treat it as first-class context and use it before improvising from scratch.\n"
+        "For anything beyond brief small talk or a one-off factual answer, prefer relevant memory when it exists. If retrieved memory is present, treat it as first-class context.\n"
         "If the current request looks like an ongoing person, project, preference, plan, or follow-up but retrieved memory seems thin, proactively consult memory tools before answering.\n"
         "For deliberate memory work, default to this flow: memory_index_search -> read or edit the actual memory files -> memory_index_save.\n"
-        "Use memory_index_search to find relevant memory files before reading, editing, moving, or deleting them.\n"
-        "When you deliberately edit a memory file with normal file tools, call memory_index_save afterward to keep the index in sync.\n"
-        "If you already know the exact memory file path, you may read it directly, but still keep the index in sync after material changes.\n"
+        "Use memory_index_search before reading, editing, moving, or deleting memory files unless you already know the exact path.\n"
+        "If you edit a memory file with normal file tools, call memory_index_save afterward to keep the index in sync. Prefer memory index tools over manually editing index.json.\n"
         "Use memory_search when the user explicitly asks to inspect memory contents, or when you need extra memory context that was not already surfaced.\n"
         "Use memory_save when the user explicitly asks you to remember something, or when this turn reveals a durable fact, preference, project state, commitment, or follow-up that should survive future conversations.\n"
-        "After you speak or complete an important action, deliberately save salient durable memory instead of assuming transcript logging alone is enough.\n"
-        "Prefer memory index tools over manually editing index.json, and do not rewrite index.json with normal file tools."
+        "After you speak or complete an important action, deliberately save salient durable memory instead of assuming transcript logging alone is enough."
     )
 
 
@@ -90,14 +87,10 @@ def _format_speak_guidance(agent_name: str, tool_names: list[str]) -> str | None
     active_name = agent_name.strip() or "KIRA"
     return (
         "Adapters are the user's ears and mouth into shared spaces, but you are the thinking core.\n"
-        "Your internal run summary and your outward speech are separate.\n"
-        "Use speak only for words that should actually be delivered to the current conversation.\n"
-        "Any normal text you return without using speak becomes internal summary only.\n"
-        "Do not rely on internal summary text to reach users through Slack or Telegram. Channel adapters only deliver speak output.\n"
-        "For normal replies in the current conversation, prefer speak over direct Slack or Telegram send-message tools.\n"
+        "Use speak only for words that should actually be delivered to the current conversation. Any normal text you return without using speak becomes internal summary only.\n"
+        "Do not rely on internal summary text to reach users through Slack or Telegram. For normal replies in the current conversation, prefer speak over direct Slack or Telegram send-message tools.\n"
         "Reserve direct channel send tools for proactive delivery, cross-room delivery, or channel-specific actions such as file upload.\n"
-        "In scheduled or background runs, think and act first. Speak only when there is a real audience that should receive an outward message.\n"
-        "If no outward message is needed, do not call speak.\n"
+        "In scheduled or background runs, think and act first. If no outward message is needed, do not call speak.\n"
         "Keep your internal summary concise, action-oriented, and free of long private chain-of-thought dumps.\n"
         "When the current input looks like a multi-person room transcript, treat it as ambient shared-space context rather than as a guaranteed direct request.\n"
         f"In shared rooms, speak only if someone explicitly addresses you as {active_name} or if interrupting would clearly provide useful help. Otherwise stay silent."
@@ -120,10 +113,8 @@ def _format_channel_delivery_guidance(tool_names: list[str]) -> str | None:
 
     return (
         "Channel tools are delivery/control tools, not retrieval tools.\n"
-        "Use channel tools to reply, forward, react, or upload files.\n"
-        "Do not use channel tools to ask humans for information that should be gathered via MCP or other retrieval tools.\n"
-        "For Slack specifically, current-conversation delivery may use the exact IDs or mention tokens surfaced in context, but wider workspace search or investigation belongs to MCP/retrieval paths.\n"
-        "If the user already tagged a Slack user or channel in the current conversation, reuse that surfaced reference before asking follow-up questions about the same target."
+        "Use channel tools to reply, forward, react, or upload files, not to ask humans for information that should be gathered via MCP or other retrieval tools.\n"
+        "For Slack specifically, current-conversation delivery may use the exact IDs or mention tokens surfaced in context, but wider workspace search or investigation belongs to MCP/retrieval paths."
     )
 
 
