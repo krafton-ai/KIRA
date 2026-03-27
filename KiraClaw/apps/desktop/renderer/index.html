@@ -756,6 +756,23 @@
                 </label>
               </div>
             </section>
+
+            <section id="full-disk-access-section" class="settings-section permission-section" hidden>
+              <div class="permission-title-row">
+                <h3 data-i18n="settings.fullDiskAccessTitle">Full Disk Access</h3>
+                <div id="full-disk-access-chip" class="status-chip info" data-i18n="common.checking">Checking</div>
+              </div>
+              <p class="section-copy" data-i18n="settings.fullDiskAccessDesc">Open macOS Settings and enable Full Disk Access for KiraClaw if you want fewer file and network volume permission prompts.</p>
+              <div id="full-disk-access-panel" class="permission-panel">
+                <div class="field full">
+                  <div class="button-row permission-actions">
+                    <button id="open-full-disk-access-settings" class="ghost" type="button" data-i18n="common.openSettings">Open Settings</button>
+                    <button id="relaunch-app" class="ghost" type="button" data-i18n="common.restartApp">Restart App</button>
+                  </div>
+                  <div id="full-disk-access-status" class="status-text" data-i18n="settings.fullDiskAccessUnknownStatus">KiraClaw has not checked Full Disk Access yet.</div>
+                </div>
+              </div>
+            </section>
           </div>
 
           <footer class="view-foot">

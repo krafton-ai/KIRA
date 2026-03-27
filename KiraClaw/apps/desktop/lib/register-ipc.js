@@ -2,6 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
+const { execFile } = require("child_process");
 const { shell } = require("electron");
 
 function resolveUserPath(app, requestedPath) {
@@ -16,6 +17,123 @@ function resolveUserPath(app, requestedPath) {
     return path.join(app.getPath("home"), targetPath.slice(2));
   }
   return path.resolve(targetPath);
+}
+
+function execOpen(target) {
+  return new Promise((resolve, reject) => {
+    execFile("/usr/bin/open", [target], (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function isPermissionDeniedError(error) {
+  const code = String(error?.code || "").trim().toUpperCase();
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    code === "EPERM"
+    || code === "EACCES"
+    || message.includes("operation not permitted")
+    || message.includes("permission denied")
+  );
+}
+
+function getFullDiskAccessStatus() {
+  if (process.platform !== "darwin") {
+    return {
+      supported: false,
+      status: "unsupported",
+      message: "Full Disk Access checks are available on macOS only.",
+    };
+  }
+
+  const candidates = [
+    path.join(os.homedir(), "Library", "Mail"),
+    path.join(os.homedir(), "Library", "Messages"),
+    path.join(os.homedir(), "Library", "Safari"),
+    path.join(os.homedir(), "Library", "Calendars"),
+    path.join(os.homedir(), "Library", "Application Support", "AddressBook"),
+  ];
+
+  let sawExistingCandidate = false;
+  for (const candidate of candidates) {
+    try {
+      const stats = fs.statSync(candidate);
+      sawExistingCandidate = true;
+      if (stats.isDirectory()) {
+        fs.readdirSync(candidate);
+      } else {
+        const fd = fs.openSync(candidate, "r");
+        fs.closeSync(fd);
+      }
+      return {
+        supported: true,
+        status: "granted",
+        message: "Full Disk Access appears to be enabled.",
+        path: candidate,
+      };
+    } catch (error) {
+      if (isPermissionDeniedError(error)) {
+        return {
+          supported: true,
+          status: "not_granted",
+          message: "Full Disk Access appears to be disabled.",
+          path: candidate,
+        };
+      }
+      if (String(error?.code || "").trim().toUpperCase() === "ENOENT") {
+        continue;
+      }
+    }
+  }
+
+  return {
+    supported: true,
+    status: "unknown",
+    message: sawExistingCandidate
+      ? "KiraClaw could not confirm Full Disk Access from the current probe paths."
+      : "No protected macOS probe path was found yet. Open Settings if you want to grant Full Disk Access.",
+  };
+}
+
+async function openFullDiskAccessSettings() {
+  if (process.platform !== "darwin") {
+    return {
+      success: false,
+      supported: false,
+      message: "Full Disk Access settings are available on macOS only.",
+    };
+  }
+
+  const urls = [
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+    "x-apple.systempreferences:com.apple.preference.security",
+  ];
+
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      await execOpen(url);
+      return {
+        success: true,
+        supported: true,
+        message: "Opened Full Disk Access settings.",
+        url,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  return {
+    success: false,
+    supported: true,
+    message: lastError?.message || "Failed to open Full Disk Access settings.",
+  };
 }
 
 function unsupportedUpdaterState(app) {
@@ -189,6 +307,15 @@ function registerIpcHandlers({ app, ipcMain, configStore, daemonController, getU
       return { success: false, message: error };
     }
     return { success: true, message: `Opened ${resolvedPath}.`, path: resolvedPath };
+  });
+  ipcMain.handle("get-full-disk-access-status", async () => getFullDiskAccessStatus());
+  ipcMain.handle("open-full-disk-access-settings", async () => openFullDiskAccessSettings());
+  ipcMain.handle("relaunch-app", async () => {
+    setImmediate(() => {
+      app.relaunch();
+      app.exit(0);
+    });
+    return { success: true, message: "Restarting KiraClaw..." };
   });
   ipcMain.handle("open-path", async (_event, requestedPath) => {
     const targetPath = String(requestedPath || "").trim();

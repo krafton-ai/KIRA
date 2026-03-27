@@ -46,6 +46,15 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   openFilesystemBaseDir(targetPath) {
     return ipcRenderer.invoke("open-filesystem-base-dir", targetPath);
   },
+  getFullDiskAccessStatus() {
+    return ipcRenderer.invoke("get-full-disk-access-status");
+  },
+  openFullDiskAccessSettings() {
+    return ipcRenderer.invoke("open-full-disk-access-settings");
+  },
+  relaunchApp() {
+    return ipcRenderer.invoke("relaunch-app");
+  },
   openPath(targetPath) {
     return ipcRenderer.invoke("open-path", targetPath);
   },

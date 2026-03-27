@@ -59,6 +59,74 @@ function renderResponseTraceControl() {
   }
 }
 
+function fullDiskAccessView(status) {
+  if (status === "granted") {
+    return {
+      className: "status-chip online",
+      label: t("settings.fullDiskAccessGranted"),
+      message: t("settings.fullDiskAccessGrantedStatus"),
+    };
+  }
+  if (status === "not_granted") {
+    return {
+      className: "status-chip offline",
+      label: t("settings.fullDiskAccessNotGranted"),
+      message: "",
+    };
+  }
+  if (status === "unsupported") {
+    return {
+      className: "status-chip info",
+      label: t("settings.fullDiskAccessUnsupported"),
+      message: t("settings.fullDiskAccessUnsupportedStatus"),
+    };
+  }
+  return {
+    className: "status-chip info",
+    label: t("settings.fullDiskAccessUnknown"),
+    message: t("settings.fullDiskAccessUnknownStatus"),
+  };
+}
+
+function renderFullDiskAccessStatus() {
+  const section = byId("full-disk-access-section");
+  const panel = byId("full-disk-access-panel");
+  const chip = byId("full-disk-access-chip");
+  const status = byId("full-disk-access-status");
+  const openButton = byId("open-full-disk-access-settings");
+  const relaunchButton = byId("relaunch-app");
+  if (!section || !panel || !chip || !status) {
+    return;
+  }
+
+  if (!state.fullDiskAccess) {
+    section.hidden = true;
+    chip.className = "status-chip info";
+    setText(chip, t("common.checking"));
+    setText(status, t("settings.fullDiskAccessUnknownStatus"));
+    if (openButton) {
+      openButton.disabled = false;
+    }
+    if (relaunchButton) {
+      relaunchButton.disabled = false;
+    }
+    return;
+  }
+
+  section.hidden = !Boolean(state.fullDiskAccess.supported);
+  const view = fullDiskAccessView(String(state.fullDiskAccess.status || "unknown"));
+  chip.className = view.className;
+  setText(chip, view.label);
+  setText(status, view.message);
+  const supported = Boolean(state.fullDiskAccess.supported);
+  if (openButton) {
+    openButton.disabled = !supported;
+  }
+  if (relaunchButton) {
+    relaunchButton.disabled = !supported;
+  }
+}
+
 function renderDesktopState() {
   if (!state.settingsDirty) {
     applySettingsToForm(state);
@@ -67,6 +135,7 @@ function renderDesktopState() {
   updateHomeStatus(state, state.daemonStatus, state.runtime);
   syncSlackRetrieveConnectState();
   renderResponseTraceControl();
+  renderFullDiskAccessStatus();
 }
 
 function rerenderLanguageSensitiveViews() {
@@ -158,6 +227,9 @@ function setResponseTraceStatus(message) {
 
 async function refreshActiveView() {
   await refreshRuntime();
+  if (state.activeView === "settings") {
+    await loadFullDiskAccessStatus();
+  }
   if (state.activeView === "overview") {
     await loadUpdaterState();
   }
@@ -330,6 +402,18 @@ async function loadConfig() {
   state.config = await api.getConfig();
   renderDesktopState();
   clearChatThread(state);
+}
+
+async function loadFullDiskAccessStatus() {
+  try {
+    state.fullDiskAccess = await api.getFullDiskAccessStatus();
+  } catch {
+    state.fullDiskAccess = {
+      supported: true,
+      status: "unknown",
+    };
+  }
+  renderDesktopState();
 }
 
 async function loadAppMeta() {
@@ -622,6 +706,9 @@ function bindActions() {
   bindNavigation({
     onViewChange: (viewName) => {
       state.activeView = viewName;
+      if (viewName === "settings") {
+        loadFullDiskAccessStatus().catch(() => {});
+      }
       if (viewName === "skills") {
         loadSkills().catch(() => {});
       }
@@ -717,6 +804,19 @@ function bindActions() {
     } catch (error) {
       setSettingsStatus(t("status.openFolderFailed", { message: error.message }));
     }
+  });
+  document.getElementById("open-full-disk-access-settings")?.addEventListener("click", async () => {
+    setSettingsStatus(t("status.openingFullDiskAccessSettings"));
+    try {
+      await api.openFullDiskAccessSettings();
+      setSettingsStatus(t("status.fullDiskAccessSettingsOpened"));
+    } catch (error) {
+      setSettingsStatus(t("status.fullDiskAccessSettingsFailed", { message: error.message }));
+    }
+  });
+  document.getElementById("relaunch-app")?.addEventListener("click", async () => {
+    setSettingsStatus(t("status.relaunchingApp"));
+    await api.relaunchApp();
   });
   document.getElementById("connect-slack-retrieve")?.addEventListener("click", async () => {
     try {

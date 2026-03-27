@@ -1347,6 +1347,38 @@ button:disabled {
   color: var(--text);
 }
 
+.permission-section {
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(180deg, rgba(var(--accent-rgb), 0.08), rgba(var(--accent-rgb), 0.03)),
+    rgba(255, 255, 255, 0.02);
+}
+
+.permission-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.permission-title-row h3 {
+  color: var(--accent);
+}
+
+.permission-title-row .status-chip {
+  flex: 0 0 auto;
+}
+
+.permission-panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.permission-actions {
+  justify-content: center;
+}
+
 .form-select {
   appearance: none;
   background-image:
