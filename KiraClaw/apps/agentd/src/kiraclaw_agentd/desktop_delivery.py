@@ -15,7 +15,9 @@ def _utc_now() -> str:
 class DesktopDelivery:
     def __init__(self) -> None:
         self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
         self._messages: dict[str, list[dict[str, Any]]] = {}
+        self._sequence = 0
 
     async def send_message(
         self,
@@ -33,6 +35,8 @@ class DesktopDelivery:
         }
         with self._lock:
             self._messages.setdefault(normalized_session_id, []).append(entry)
+            self._sequence += 1
+            self._condition.notify_all()
 
     def drain_messages(self, session_id: str | None) -> list[dict[str, Any]]:
         normalized_session_id = str(session_id or DEFAULT_DESKTOP_SESSION_ID).strip() or DEFAULT_DESKTOP_SESSION_ID
@@ -40,3 +44,14 @@ class DesktopDelivery:
             rows = list(self._messages.get(normalized_session_id, []))
             self._messages.pop(normalized_session_id, None)
         return rows
+
+    def current_sequence(self) -> int:
+        with self._lock:
+            return int(self._sequence)
+
+    def wait_for_message(self, after_sequence: int, timeout: float = 15.0) -> int | None:
+        with self._condition:
+            has_new_message = self._condition.wait_for(lambda: self._sequence > int(after_sequence), timeout=timeout)
+            if not has_new_message:
+                return None
+            return int(self._sequence)

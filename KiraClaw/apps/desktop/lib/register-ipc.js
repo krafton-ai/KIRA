@@ -3,7 +3,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
-const { shell } = require("electron");
+const { shell, systemPreferences } = require("electron");
 
 function resolveUserPath(app, requestedPath) {
   const targetPath = String(requestedPath || "").trim();
@@ -100,6 +100,50 @@ function getFullDiskAccessStatus() {
   };
 }
 
+function getScreenRecordingAccessStatus() {
+  if (process.platform !== "darwin") {
+    return {
+      supported: false,
+      status: "unsupported",
+      message: "Screen Recording checks are available on macOS only.",
+    };
+  }
+
+  try {
+    const rawStatus = String(systemPreferences.getMediaAccessStatus("screen") || "").trim().toLowerCase();
+    if (rawStatus === "granted") {
+      return {
+        supported: true,
+        status: "granted",
+        message: "Screen Recording access appears to be enabled.",
+        rawStatus,
+      };
+    }
+    if (["denied", "restricted", "not-determined", "not_determined"].includes(rawStatus)) {
+      return {
+        supported: true,
+        status: "not_granted",
+        message: "Screen Recording access appears to be disabled.",
+        rawStatus,
+      };
+    }
+    return {
+      supported: true,
+      status: "unknown",
+      message: rawStatus
+        ? `Screen Recording access returned an unrecognized status: ${rawStatus}.`
+        : "KiraClaw could not confirm Screen Recording access yet.",
+      rawStatus,
+    };
+  } catch (error) {
+    return {
+      supported: true,
+      status: "unknown",
+      message: error?.message || "KiraClaw could not read Screen Recording access.",
+    };
+  }
+}
+
 async function openFullDiskAccessSettings() {
   if (process.platform !== "darwin") {
     return {
@@ -133,6 +177,42 @@ async function openFullDiskAccessSettings() {
     success: false,
     supported: true,
     message: lastError?.message || "Failed to open Full Disk Access settings.",
+  };
+}
+
+async function openScreenRecordingSettings() {
+  if (process.platform !== "darwin") {
+    return {
+      success: false,
+      supported: false,
+      message: "Screen Recording settings are available on macOS only.",
+    };
+  }
+
+  const urls = [
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+    "x-apple.systempreferences:com.apple.preference.security",
+  ];
+
+  let lastError = null;
+  for (const url of urls) {
+    try {
+      await execOpen(url);
+      return {
+        success: true,
+        supported: true,
+        message: "Opened Screen Recording settings.",
+        url,
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  return {
+    success: false,
+    supported: true,
+    message: lastError?.message || "Failed to open Screen Recording settings.",
   };
 }
 
@@ -310,6 +390,8 @@ function registerIpcHandlers({ app, ipcMain, configStore, daemonController, getU
   });
   ipcMain.handle("get-full-disk-access-status", async () => getFullDiskAccessStatus());
   ipcMain.handle("open-full-disk-access-settings", async () => openFullDiskAccessSettings());
+  ipcMain.handle("get-screen-recording-access-status", async () => getScreenRecordingAccessStatus());
+  ipcMain.handle("open-screen-recording-settings", async () => openScreenRecordingSettings());
   ipcMain.handle("relaunch-app", async () => {
     setImmediate(() => {
       app.relaunch();

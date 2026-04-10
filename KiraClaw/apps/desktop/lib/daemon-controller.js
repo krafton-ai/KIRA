@@ -53,6 +53,38 @@ function createDaemonController({
     }
   }
 
+  async function requestJson(path, { method = "GET", timeoutMs = 800 } = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`${daemonUrl}${path}`, {
+        method,
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      let body = {};
+      try {
+        body = text ? JSON.parse(text) : {};
+      } catch {
+        body = { raw: text };
+      }
+      return {
+        ok: response.ok,
+        status: response.status,
+        body,
+      };
+    } catch {
+      return {
+        ok: false,
+        status: 0,
+        body: null,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function isManagedRunning() {
     return Boolean(daemonProcess && daemonProcess.exitCode === null && !daemonProcess.killed);
   }
@@ -83,6 +115,10 @@ function createDaemonController({
     return request("/health", { timeoutMs: 800 });
   }
 
+  async function readiness() {
+    return requestJson("/ready", { timeoutMs: 1200 });
+  }
+
   async function requestShutdown() {
     return request("/v1/admin/shutdown", {
       method: "POST",
@@ -92,6 +128,7 @@ function createDaemonController({
 
   async function getStatus() {
     const running = await isReachable();
+    const readinessState = running ? await readiness() : null;
     return {
       running,
       managed: daemonManagedByDesktop && isManagedRunning(),
@@ -99,6 +136,8 @@ function createDaemonController({
       pid: daemonProcess && isManagedRunning() ? daemonProcess.pid : null,
       url: daemonUrl,
       configFile,
+      ready: Boolean(readinessState?.ok),
+      readiness: readinessState?.body || null,
     };
   }
 
@@ -686,7 +725,14 @@ function createDaemonController({
       void stopBrowserMcp();
     });
 
-    const ready = await waitUntil(isReachable, { timeoutMs: 180000 });
+    const ready = await waitUntil(async () => {
+      const reachable = await isReachable();
+      if (!reachable) {
+        return false;
+      }
+      const readinessState = await readiness();
+      return Boolean(readinessState.ok);
+    }, { timeoutMs: 180000 });
     if (!ready) {
       const details = latestLogSummary();
       await stopManaged();

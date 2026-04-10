@@ -14,6 +14,7 @@ export const state = {
   },
   runtime: null,
   fullDiskAccess: null,
+  screenRecordingAccess: null,
   updater: null,
   skills: null,
   schedules: [],

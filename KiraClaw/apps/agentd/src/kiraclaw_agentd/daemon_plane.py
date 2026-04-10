@@ -21,6 +21,9 @@ class DaemonEventStore:
         self._log_dir = settings.run_log_dir or (settings.workspace_dir / "logs")
         self._log_file = self._log_dir / "daemon-events.jsonl"
         self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
+        self._sequence = 0
+        self._latest_entry: dict[str, Any] | None = None
 
     @property
     def log_file(self) -> Path:
@@ -36,7 +39,9 @@ class DaemonEventStore:
         resource_id: str | None = None,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        entry = {
+        with self._lock:
+            self._sequence += 1
+            entry = {
             "event_id": f"evt_{uuid4().hex[:12]}",
             "type": str(event_type or "").strip() or "daemon.event",
             "level": str(level or "info").strip() or "info",
@@ -45,12 +50,25 @@ class DaemonEventStore:
             "resource_id": str(resource_id or "").strip() or None,
             "payload": payload or {},
             "created_at": _timestamp(),
-        }
-        with self._lock:
+            "sequence": self._sequence,
+            }
             self._log_dir.mkdir(parents=True, exist_ok=True)
             with self._log_file.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            self._latest_entry = dict(entry)
+            self._condition.notify_all()
         return entry
+
+    def current_sequence(self) -> int:
+        with self._lock:
+            return int(self._sequence)
+
+    def wait_for_event(self, after_sequence: int, timeout: float = 15.0) -> dict[str, Any] | None:
+        with self._condition:
+            has_new_event = self._condition.wait_for(lambda: self._sequence > int(after_sequence), timeout=timeout)
+            if not has_new_event or self._latest_entry is None:
+                return None
+            return dict(self._latest_entry)
 
     def tail(
         self,

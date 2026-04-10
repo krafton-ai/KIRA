@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 import sys
 import time
@@ -17,10 +18,19 @@ from kiraclaw_agentd.slack_retrieve_oauth import SlackRetrieveOAuthResult
 _LOOPBACK_CLIENT = ("127.0.0.1", 50000)
 
 
-def test_runs_endpoint_returns_serializable_payload(monkeypatch) -> None:
-    app = create_app()
+def _disable_app_lifespan(app) -> None:
+    @asynccontextmanager
+    async def _noop_lifespan(_app):
+        yield
+
     app.router.on_startup.clear()
     app.router.on_shutdown.clear()
+    app.router.lifespan_context = _noop_lifespan
+
+
+def test_runs_endpoint_returns_serializable_payload(monkeypatch) -> None:
+    app = create_app()
+    _disable_app_lifespan(app)
 
     async def fake_run(**_: object) -> SimpleNamespace:
         return SimpleNamespace(
@@ -69,8 +79,7 @@ def test_slack_retrieve_oauth_flow_persists_token(tmp_path: Path, monkeypatch) -
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     async def fake_exchange(*, client_id: str, client_secret: str, code: str, redirect_uri: str) -> SlackRetrieveOAuthResult:
         assert client_id == "client-id"
@@ -116,8 +125,7 @@ def test_run_logs_endpoint_includes_live_records(tmp_path: Path, monkeypatch) ->
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     app.state.run_log_store.observe(
         RunRecord(
@@ -152,8 +160,7 @@ def test_desktop_messages_endpoint_drains_inbox(tmp_path: Path, monkeypatch) -> 
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     with TestClient(app, client=_LOOPBACK_CLIENT) as client:
         import asyncio
@@ -188,8 +195,7 @@ def test_resources_endpoint_returns_gateway_and_channels(tmp_path: Path, monkeyp
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     with TestClient(app, client=_LOOPBACK_CLIENT) as client:
         response = client.get("/v1/resources")
@@ -211,8 +217,7 @@ def test_runtime_endpoint_includes_response_trace_setting(tmp_path: Path, monkey
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     with TestClient(app, client=_LOOPBACK_CLIENT) as client:
         response = client.get("/v1/runtime")
@@ -221,14 +226,36 @@ def test_runtime_endpoint_includes_response_trace_setting(tmp_path: Path, monkey
     assert response.json()["response_trace_enabled"] is False
 
 
+def test_ready_endpoint_stays_200_when_optional_gateway_fails(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("KIRACLAW_SLACK_ENABLED", "true")
+    monkeypatch.setenv("KIRACLAW_MCP_ENABLED", "true")
+    get_settings.cache_clear()
+
+    app = create_app()
+    _disable_app_lifespan(app)
+    app.state.slack_gateway.state = "failed"
+    app.state.engine.mcp_runtime.state = "error"
+
+    with TestClient(app, client=_LOOPBACK_CLIENT) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["critical_checks"]["memory"] in {"idle", "ready", "not_configured", "disabled", "stopped"}
+    assert body["optional_checks"]["slack"] == "failed"
+    assert body["optional_checks"]["mcp"] == "error"
+
+
 def test_daemon_events_endpoint_returns_resource_events(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     with TestClient(app, client=_LOOPBACK_CLIENT) as client:
         client.get("/v1/resources")
@@ -241,14 +268,93 @@ def test_daemon_events_endpoint_returns_resource_events(tmp_path: Path, monkeypa
     assert body["daemon_event_file"].endswith("daemon-events.jsonl")
 
 
+def test_daemon_event_store_exposes_sequence_and_latest_event(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    get_settings.cache_clear()
+
+    app = create_app()
+    _disable_app_lifespan(app)
+
+    initial_sequence = app.state.daemon_plane.events.current_sequence()
+    app.state.daemon_plane.emit(
+        "runtime.changed",
+        message="Runtime changed",
+        resource_kind="gateway",
+        resource_id="agentd",
+        payload={"state": "running"},
+    )
+    event = app.state.daemon_plane.events.wait_for_event(initial_sequence, timeout=0.01)
+
+    assert event is not None
+    assert event["type"] == "runtime.changed"
+    assert event["resource_kind"] == "gateway"
+    assert int(event["sequence"]) > initial_sequence
+
+
+def test_desktop_delivery_waits_for_message(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    get_settings.cache_clear()
+
+    app = create_app()
+    _disable_app_lifespan(app)
+
+    initial_sequence = app.state.desktop_delivery.current_sequence()
+
+    import asyncio
+
+    asyncio.run(
+        app.state.desktop_delivery.send_message(
+            "desktop:local",
+            "hello",
+            metadata={"source": "test"},
+        )
+    )
+    sequence = app.state.desktop_delivery.wait_for_message(initial_sequence, timeout=0.01)
+
+    assert sequence is not None
+    assert int(sequence) > initial_sequence
+
+
+def test_run_log_store_waits_for_update(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    get_settings.cache_clear()
+
+    app = create_app()
+    _disable_app_lifespan(app)
+
+    initial_sequence = app.state.run_log_store.current_sequence()
+    app.state.run_log_store.observe(
+        RunRecord(
+            run_id="run-live",
+            session_id="desktop:test",
+            state="running",
+            prompt="hello",
+            created_at="2026-01-01T00:00:00Z",
+            started_at="2026-01-01T00:00:01Z",
+            result=RunResult(
+                final_response="",
+                streamed_text="thinking",
+                tool_events=[],
+            ),
+            metadata={"source": "api"},
+        )
+    )
+    sequence = app.state.run_log_store.wait_for_update(initial_sequence, timeout=0.01)
+
+    assert sequence is not None
+    assert int(sequence) > initial_sequence
+
+
 def test_resources_endpoint_refreshes_background_process_status(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     command = f'"{sys.executable}" -c "import time; print(\'done\'); time.sleep(0.1)"'
 
@@ -269,8 +375,7 @@ def test_resources_endpoint_refreshes_background_process_status(tmp_path: Path, 
 
 def test_v1_endpoints_reject_non_loopback_clients(monkeypatch) -> None:
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     with TestClient(app, client=("203.0.113.10", 50000)) as client:
         response = client.get("/v1/runtime")
@@ -287,8 +392,7 @@ def test_slack_oauth_callback_allows_non_loopback_clients(tmp_path: Path, monkey
     get_settings.cache_clear()
 
     app = create_app()
-    app.router.on_startup.clear()
-    app.router.on_shutdown.clear()
+    _disable_app_lifespan(app)
 
     app.state.slack_retrieve_oauth["pending_state"] = "state-token"
     app.state.slack_retrieve_oauth["client_id"] = "client-id"

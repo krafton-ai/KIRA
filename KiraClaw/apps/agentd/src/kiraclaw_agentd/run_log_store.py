@@ -57,7 +57,9 @@ class RunLogStore:
         self._log_dir = settings.run_log_dir or (settings.workspace_dir / "logs")
         self._log_file = settings.run_log_file or (self._log_dir / "runs.jsonl")
         self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
         self._live_records: dict[str, RunRecord] = {}
+        self._sequence = 0
 
     @property
     def log_file(self) -> Path:
@@ -65,16 +67,21 @@ class RunLogStore:
 
     def observe(self, record: RunRecord) -> None:
         with self._lock:
+            self._sequence += 1
             if record.state in {"queued", "running"}:
                 self._live_records[record.run_id] = record
+                self._condition.notify_all()
                 return
 
             self._live_records.pop(record.run_id, None)
             self._append_final_entry(record)
+            self._condition.notify_all()
 
     def append(self, record: RunRecord) -> None:
         with self._lock:
+            self._sequence += 1
             self._append_final_entry(record)
+            self._condition.notify_all()
 
     def _append_final_entry(self, record: RunRecord) -> None:
         self._log_dir.mkdir(parents=True, exist_ok=True)
@@ -88,6 +95,17 @@ class RunLogStore:
             rows.extend(self._build_live_rows(session_id=session_id))
             rows.sort(key=_sort_run_log_entry_key, reverse=True)
             return rows[: max(1, limit)]
+
+    def current_sequence(self) -> int:
+        with self._lock:
+            return int(self._sequence)
+
+    def wait_for_update(self, after_sequence: int, timeout: float = 15.0) -> int | None:
+        with self._condition:
+            has_new_record = self._condition.wait_for(lambda: self._sequence > int(after_sequence), timeout=timeout)
+            if not has_new_record:
+                return None
+            return int(self._sequence)
 
     def _build_live_rows(self, *, session_id: str | None = None) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version as package_version
+import json
 import os
 import signal
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from kiraclaw_agentd.channel_delivery import ChannelDelivery
 from kiraclaw_agentd.daemon_plane import DaemonPlane
@@ -253,7 +255,53 @@ def create_app() -> FastAPI:
         observer=observe_scheduler,
     )
 
-    app = FastAPI(title="KiraClaw Agentd", version=_agentd_version())
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        daemon_plane.upsert_resource(
+            "gateway",
+            "agentd",
+            "starting",
+            data={"host": settings.host, "port": settings.port},
+            event_type="gateway.starting",
+            message="agentd starting",
+        )
+        await engine.start()
+        await memory_runtime.start()
+        await slack_gateway.start()
+        await telegram_gateway.start()
+        await discord_gateway.start()
+        await scheduler_runtime.start()
+        _sync_daemon_resources(gateway_state="running")
+        daemon_plane.emit("gateway.started", message="agentd started", resource_kind="gateway", resource_id="agentd")
+        try:
+            yield
+        finally:
+            daemon_plane.upsert_resource(
+                "gateway",
+                "agentd",
+                "stopping",
+                data={"host": settings.host, "port": settings.port},
+                event_type="gateway.stopping",
+                message="agentd stopping",
+            )
+            await scheduler_runtime.stop()
+            await discord_gateway.stop()
+            await telegram_gateway.stop()
+            await slack_gateway.stop()
+            await memory_runtime.stop()
+            await session_manager.stop()
+            await engine.stop()
+            _sync_daemon_resources(gateway_state="stopped")
+            daemon_plane.upsert_resource(
+                "gateway",
+                "agentd",
+                "stopped",
+                data={"host": settings.host, "port": settings.port},
+                event_type="gateway.stopped",
+                message="agentd stopped",
+            )
+
+    app = FastAPI(title="KiraClaw Agentd", version=_agentd_version(), lifespan=lifespan)
     app.state.engine = engine
     app.state.session_manager = session_manager
     app.state.memory_runtime = memory_runtime
@@ -384,59 +432,7 @@ def create_app() -> FastAPI:
                 message=f"Background process {process_id} removed",
             )
 
-    @app.on_event("startup")
-    async def startup() -> None:
-        daemon_plane.upsert_resource(
-            "gateway",
-            "agentd",
-            "starting",
-            data={"host": settings.host, "port": settings.port},
-            event_type="gateway.starting",
-            message="agentd starting",
-        )
-        await engine.start()
-        await memory_runtime.start()
-        await slack_gateway.start()
-        await telegram_gateway.start()
-        await discord_gateway.start()
-        await scheduler_runtime.start()
-        _sync_daemon_resources(gateway_state="running")
-        daemon_plane.emit("gateway.started", message="agentd started", resource_kind="gateway", resource_id="agentd")
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        daemon_plane.upsert_resource(
-            "gateway",
-            "agentd",
-            "stopping",
-            data={"host": settings.host, "port": settings.port},
-            event_type="gateway.stopping",
-            message="agentd stopping",
-        )
-        await scheduler_runtime.stop()
-        await discord_gateway.stop()
-        await telegram_gateway.stop()
-        await slack_gateway.stop()
-        await memory_runtime.stop()
-        await session_manager.stop()
-        await engine.stop()
-        _sync_daemon_resources(gateway_state="stopped")
-        daemon_plane.upsert_resource(
-            "gateway",
-            "agentd",
-            "stopped",
-            data={"host": settings.host, "port": settings.port},
-            event_type="gateway.stopped",
-            message="agentd stopped",
-        )
-
-    @app.get("/health")
-    async def health() -> dict:
-        return {"status": "healthy", "service": "kiraclaw-agentd"}
-
-    @app.get("/v1/runtime")
-    async def runtime() -> dict:
-        _sync_daemon_resources()
+    def _runtime_payload() -> dict[str, Any]:
         return {
             "available_providers": ["claude", "openai", "vertex_ai"],
             "provider": settings.provider,
@@ -519,6 +515,85 @@ def create_app() -> FastAPI:
             "credential_file": str(settings.credential_file) if settings.credential_file else None,
         }
 
+    @app.get("/health")
+    async def health() -> dict:
+        return {
+            "status": "healthy",
+            "service": "kiraclaw-agentd",
+            "gateway_state": "running",
+        }
+
+    @app.get("/ready")
+    async def ready() -> JSONResponse:
+        checks = {
+            "engine": "ready",
+            "memory": memory_runtime.state,
+            "scheduler": scheduler_runtime.state,
+            "slack": slack_gateway.state,
+            "telegram": telegram_gateway.state,
+            "discord": discord_gateway.state,
+            "mcp": engine.mcp_runtime.state,
+        }
+        unhealthy_states = {"failed", "error"}
+        critical_checks = {
+            "engine": checks["engine"],
+            "memory": checks["memory"],
+            "scheduler": checks["scheduler"],
+        }
+        optional_checks = {
+            "slack": checks["slack"] if settings.slack_enabled else "disabled",
+            "telegram": checks["telegram"] if settings.telegram_enabled else "disabled",
+            "discord": checks["discord"] if settings.discord_enabled else "disabled",
+            "mcp": checks["mcp"] if settings.mcp_enabled else "disabled",
+        }
+        critical_ready = not any(str(state or "").strip().lower() in unhealthy_states for state in critical_checks.values())
+        optional_degraded = any(str(state or "").strip().lower() in unhealthy_states for state in optional_checks.values())
+        payload = {
+            "status": "degraded" if optional_degraded else "ready",
+            "service": "kiraclaw-agentd",
+            "checks": checks,
+            "critical_checks": critical_checks,
+            "optional_checks": optional_checks,
+        }
+        return JSONResponse(status_code=200 if critical_ready else 503, content=payload)
+
+    @app.get("/v1/runtime")
+    async def runtime() -> dict:
+        _sync_daemon_resources()
+        return _runtime_payload()
+
+    @app.get("/v1/runtime/events")
+    async def runtime_events() -> StreamingResponse:
+        async def stream() -> Any:
+            _sync_daemon_resources()
+            snapshot = {
+                "type": "snapshot",
+                "runtime": _runtime_payload(),
+            }
+            yield f"event: runtime\ndata: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
+            last_sequence = daemon_plane.events.current_sequence()
+            while True:
+                event = await asyncio.to_thread(daemon_plane.events.wait_for_event, last_sequence, 15.0)
+                if event is None:
+                    yield ": keepalive\n\n"
+                    continue
+                last_sequence = int(event.get("sequence") or last_sequence)
+                payload = {
+                    "type": "daemon_event",
+                    "event": event,
+                }
+                yield f"event: runtime\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @app.get("/v1/sessions")
     async def sessions() -> dict:
         return {"sessions": session_manager.list_sessions()}
@@ -570,6 +645,31 @@ def create_app() -> FastAPI:
             "run_log_file": str(run_log_store.log_file),
         }
 
+    @app.get("/v1/run-logs/events")
+    async def run_log_events() -> StreamingResponse:
+        async def stream() -> Any:
+            initial_sequence = run_log_store.current_sequence()
+            yield f"event: runs\ndata: {json.dumps({'type': 'snapshot', 'sequence': initial_sequence}, ensure_ascii=False)}\n\n"
+            last_sequence = initial_sequence
+            while True:
+                sequence = await asyncio.to_thread(run_log_store.wait_for_update, last_sequence, 15.0)
+                if sequence is None:
+                    yield ": keepalive\n\n"
+                    continue
+                last_sequence = int(sequence)
+                payload = {"type": "run_log_update", "sequence": last_sequence}
+                yield f"event: runs\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @app.get("/v1/daemon-events")
     async def daemon_events(limit: int = 100, resource_kind: str | None = None, resource_id: str | None = None) -> dict:
         _sync_daemon_resources()
@@ -592,6 +692,35 @@ def create_app() -> FastAPI:
             "messages": desktop_delivery.drain_messages(session_id),
             "session_id": session_id,
         }
+
+    @app.get("/v1/desktop-messages/events")
+    async def desktop_message_events(session_id: str = DEFAULT_DESKTOP_SESSION_ID) -> StreamingResponse:
+        async def stream() -> Any:
+            initial_sequence = desktop_delivery.current_sequence()
+            yield f"event: desktop\ndata: {json.dumps({'type': 'snapshot', 'sequence': initial_sequence, 'session_id': session_id}, ensure_ascii=False)}\n\n"
+            last_sequence = initial_sequence
+            while True:
+                sequence = await asyncio.to_thread(desktop_delivery.wait_for_message, last_sequence, 15.0)
+                if sequence is None:
+                    yield ": keepalive\n\n"
+                    continue
+                last_sequence = int(sequence)
+                payload = {
+                    "type": "desktop_message",
+                    "sequence": last_sequence,
+                    "session_id": session_id,
+                }
+                yield f"event: desktop\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/v1/oauth/slack-retrieve/status")
     async def slack_retrieve_oauth_status() -> dict:

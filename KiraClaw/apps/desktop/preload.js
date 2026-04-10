@@ -1,33 +1,52 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const BASE_URL = "http://127.0.0.1:8787";
+const DEFAULT_REQUEST_TIMEOUT_MS = 4000;
+const RUN_PROMPT_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function request(path, options = {}) {
+  const controller = new AbortController();
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : DEFAULT_REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const { timeoutMs: _timeoutMs, signal: _externalSignal, ...requestOptions } = options;
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(requestOptions.headers || {}),
     },
-    ...options,
+    ...requestOptions,
+    signal: controller.signal,
   });
 
-  const text = await response.text();
-  let body;
   try {
-    body = text ? JSON.parse(text) : {};
-  } catch {
-    body = { raw: text };
-  }
+    const text = await response.text();
+    let body;
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      body = { raw: text };
+    }
 
-  if (!response.ok) {
-    const message = body.detail || body.error || body.raw || `HTTP ${response.status}`;
-    throw new Error(message);
-  }
+    if (!response.ok) {
+      const message = body.detail || body.error || body.raw || `HTTP ${response.status}`;
+      throw new Error(message);
+    }
 
-  return body;
+    return body;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 contextBridge.exposeInMainWorld("kiraclaw", {
+  getDaemonBaseUrl() {
+    return BASE_URL;
+  },
   getAppMeta() {
     return ipcRenderer.invoke("get-app-meta");
   },
@@ -51,6 +70,12 @@ contextBridge.exposeInMainWorld("kiraclaw", {
   },
   openFullDiskAccessSettings() {
     return ipcRenderer.invoke("open-full-disk-access-settings");
+  },
+  getScreenRecordingAccessStatus() {
+    return ipcRenderer.invoke("get-screen-recording-access-status");
+  },
+  openScreenRecordingSettings() {
+    return ipcRenderer.invoke("open-screen-recording-settings");
   },
   relaunchApp() {
     return ipcRenderer.invoke("relaunch-app");
@@ -130,6 +155,7 @@ contextBridge.exposeInMainWorld("kiraclaw", {
     return request("/v1/runs", {
       method: "POST",
       body: JSON.stringify(payload),
+      timeoutMs: RUN_PROMPT_TIMEOUT_MS,
     });
   },
   startSlackRetrieveOAuth(payload) {

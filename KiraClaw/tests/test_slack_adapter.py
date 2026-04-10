@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from types import SimpleNamespace
 
 from kiraclaw_agentd.engine import RunResult
 from kiraclaw_agentd.observer_service import InflightMessageContext
@@ -72,6 +73,113 @@ def test_build_delivery_context_prefix_includes_channel_and_thread_when_present(
     context = _build_delivery_context_prefix("C123", "111.222")
     assert "channel_id: C123" in context
     assert "thread_ts: 111.222" in context
+
+
+def test_slack_gateway_restart_recreates_handler_after_failure(tmp_path, monkeypatch) -> None:
+    import kiraclaw_agentd.slack_adapter as slack_adapter_module
+
+    created_handlers: list[object] = []
+
+    class _FakeHandler:
+        def __init__(self, app, token) -> None:
+            self.app = app
+            self.token = token
+            self.closed = False
+            created_handlers.append(self)
+
+        async def start_async(self) -> None:
+            await asyncio.sleep(0)
+
+        async def close_async(self) -> None:
+            self.closed = True
+
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=True,
+            slack_bot_token="xoxb-test",
+            slack_app_token="xapp-test",
+            slack_signing_secret="secret",
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        monkeypatch.setattr(slack_adapter_module, "AsyncSocketModeHandler", _FakeHandler)
+        gateway._ensure_app = lambda: setattr(gateway, "app", SimpleNamespace(client=None))  # type: ignore[method-assign]
+
+        async def fake_validate() -> None:
+            gateway.identity = {"user_id": "UBOT"}
+            gateway.socket_mode_validated = True
+
+        gateway._validate_tokens = fake_validate  # type: ignore[method-assign]
+
+        await gateway.start()
+        first_handler = gateway.handler
+        assert first_handler is not None
+
+        await gateway.start()
+        second_handler = gateway.handler
+        assert second_handler is not None
+        assert second_handler is not first_handler
+        assert getattr(first_handler, "closed", False) is True
+
+        await gateway.stop()
+
+    asyncio.run(scenario())
+
+
+def test_slack_gateway_recovers_after_runner_failure(tmp_path, monkeypatch) -> None:
+    import kiraclaw_agentd.slack_adapter as slack_adapter_module
+
+    handler_started = asyncio.Event()
+    recovery_started = asyncio.Event()
+    attempts = {"count": 0}
+
+    class _FakeHandler:
+        def __init__(self, app, token) -> None:
+            self.app = app
+            self.token = token
+
+        async def start_async(self) -> None:
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise RuntimeError("socket mode dropped")
+            recovery_started.set()
+            await handler_started.wait()
+
+        async def close_async(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        settings = KiraClawSettings(
+            data_dir=tmp_path / "data",
+            workspace_dir=tmp_path / "workspace",
+            home_mode="modern",
+            slack_enabled=True,
+            slack_bot_token="xoxb-test",
+            slack_app_token="xapp-test",
+            slack_signing_secret="secret",
+        )
+        gateway = SlackGateway(_FakeSessionManager(), settings)
+        gateway._reconnect_delay_seconds = 0.01
+        monkeypatch.setattr(slack_adapter_module, "AsyncSocketModeHandler", _FakeHandler)
+        gateway._ensure_app = lambda: setattr(gateway, "app", SimpleNamespace(client=None))  # type: ignore[method-assign]
+
+        async def fake_validate() -> None:
+            gateway.identity = {"user_id": "UBOT"}
+            gateway.socket_mode_validated = True
+
+        gateway._validate_tokens = fake_validate  # type: ignore[method-assign]
+
+        await gateway.start()
+        await asyncio.wait_for(recovery_started.wait(), timeout=1.0)
+        assert attempts["count"] >= 2
+        assert gateway.state == "running"
+
+        handler_started.set()
+        await gateway.stop()
+
+    asyncio.run(scenario())
 
 
 class _FakeSlackClient:

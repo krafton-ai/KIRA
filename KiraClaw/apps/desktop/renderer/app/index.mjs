@@ -17,6 +17,17 @@ let slackRetrieveOauthPollTimer = null;
 let runLogPollTimer = null;
 let updaterPollTimer = null;
 let desktopMessagePollTimer = null;
+let runtimeEventSource = null;
+let runtimeEventRefreshTimer = null;
+let runLogEventSource = null;
+let desktopMessageEventSource = null;
+let runtimeEventReconnectTimer = null;
+let runLogEventReconnectTimer = null;
+let desktopMessageEventReconnectTimer = null;
+let updaterStateLoading = false;
+let runLogsLoading = false;
+let daemonPlaneLoading = false;
+let desktopMessagesLoading = false;
 
 function isEngineOnline() {
   return Boolean(state.runtime) || Boolean(state.daemonStatus?.running);
@@ -84,6 +95,31 @@ function fullDiskAccessView(status) {
   };
 }
 
+function screenRecordingAccessView(status) {
+  if (status === "granted") {
+    return {
+      className: "status-chip online",
+      label: t("settings.screenRecordingGranted"),
+    };
+  }
+  if (status === "not_granted") {
+    return {
+      className: "status-chip offline",
+      label: t("settings.screenRecordingNotGranted"),
+    };
+  }
+  if (status === "unsupported") {
+    return {
+      className: "status-chip info",
+      label: t("settings.screenRecordingUnsupported"),
+    };
+  }
+  return {
+    className: "status-chip info",
+    label: t("settings.screenRecordingUnknown"),
+  };
+}
+
 function renderFullDiskAccessStatus() {
   const section = byId("full-disk-access-section");
   const panel = byId("full-disk-access-panel");
@@ -120,6 +156,41 @@ function renderFullDiskAccessStatus() {
   }
 }
 
+function renderScreenRecordingStatus() {
+  const section = byId("screen-recording-section");
+  const chip = byId("screen-recording-chip");
+  const openButton = byId("open-screen-recording-settings");
+  const relaunchButton = byId("relaunch-app-screen-recording");
+  if (!section || !chip) {
+    return;
+  }
+
+  if (!state.screenRecordingAccess) {
+    section.hidden = true;
+    chip.className = "status-chip info";
+    setText(chip, t("common.checking"));
+    if (openButton) {
+      openButton.disabled = false;
+    }
+    if (relaunchButton) {
+      relaunchButton.disabled = false;
+    }
+    return;
+  }
+
+  section.hidden = !Boolean(state.screenRecordingAccess.supported);
+  const view = screenRecordingAccessView(String(state.screenRecordingAccess.status || "unknown"));
+  chip.className = view.className;
+  setText(chip, view.label);
+  const supported = Boolean(state.screenRecordingAccess.supported);
+  if (openButton) {
+    openButton.disabled = !supported;
+  }
+  if (relaunchButton) {
+    relaunchButton.disabled = !supported;
+  }
+}
+
 function renderDesktopState() {
   if (!state.settingsDirty) {
     applySettingsToForm(state);
@@ -129,6 +200,7 @@ function renderDesktopState() {
   syncSlackRetrieveConnectState();
   renderResponseTraceControl();
   renderFullDiskAccessStatus();
+  renderScreenRecordingStatus();
 }
 
 function rerenderLanguageSensitiveViews() {
@@ -222,6 +294,7 @@ async function refreshActiveView() {
   await refreshRuntime();
   if (state.activeView === "settings") {
     await loadFullDiskAccessStatus();
+    await loadScreenRecordingAccessStatus();
   }
   if (state.activeView === "overview") {
     await loadUpdaterState();
@@ -257,6 +330,85 @@ function clearEngineActionTimer() {
   }
 }
 
+function clearRuntimeEventRefreshTimer() {
+  if (runtimeEventRefreshTimer) {
+    window.clearTimeout(runtimeEventRefreshTimer);
+    runtimeEventRefreshTimer = null;
+  }
+}
+
+function clearRuntimeEventReconnectTimer() {
+  if (runtimeEventReconnectTimer) {
+    window.clearTimeout(runtimeEventReconnectTimer);
+    runtimeEventReconnectTimer = null;
+  }
+}
+
+function clearRunLogEventReconnectTimer() {
+  if (runLogEventReconnectTimer) {
+    window.clearTimeout(runLogEventReconnectTimer);
+    runLogEventReconnectTimer = null;
+  }
+}
+
+function clearDesktopMessageEventReconnectTimer() {
+  if (desktopMessageEventReconnectTimer) {
+    window.clearTimeout(desktopMessageEventReconnectTimer);
+    desktopMessageEventReconnectTimer = null;
+  }
+}
+
+function stopRuntimeEventStream() {
+  clearRuntimeEventRefreshTimer();
+  clearRuntimeEventReconnectTimer();
+  if (runtimeEventSource) {
+    runtimeEventSource.close();
+    runtimeEventSource = null;
+  }
+}
+
+function scheduleRuntimeEventRefresh() {
+  clearRuntimeEventRefreshTimer();
+  runtimeEventRefreshTimer = window.setTimeout(async () => {
+    runtimeEventRefreshTimer = null;
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    await refreshRuntime();
+    if (state.activeView === "diagnostics") {
+      await loadDaemonPlane();
+      return;
+    }
+    if (state.activeView === "runs") {
+      await loadRunLogs();
+    }
+  }, 150);
+}
+
+function startRuntimeEventStream() {
+  stopRuntimeEventStream();
+  const baseUrl = api.getDaemonBaseUrl?.();
+  if (!baseUrl) {
+    return;
+  }
+  runtimeEventSource = new EventSource(`${baseUrl}/v1/runtime/events`);
+  runtimeEventSource.addEventListener("runtime", () => {
+    scheduleRuntimeEventRefresh();
+  });
+  runtimeEventSource.onerror = () => {
+    if (document.visibilityState !== "visible") {
+      stopRuntimeEventStream();
+      return;
+    }
+    if (!runtimeEventReconnectTimer) {
+      runtimeEventReconnectTimer = window.setTimeout(() => {
+        runtimeEventReconnectTimer = null;
+        startRuntimeEventStream();
+      }, 2000);
+    }
+  };
+}
+
 function stopUpdaterPolling() {
   if (updaterPollTimer) {
     window.clearInterval(updaterPollTimer);
@@ -285,11 +437,88 @@ function stopRunLogPolling() {
   }
 }
 
+function stopRunLogEventStream() {
+  clearRunLogEventReconnectTimer();
+  if (runLogEventSource) {
+    runLogEventSource.close();
+    runLogEventSource = null;
+  }
+}
+
+function startRunLogEventStream() {
+  stopRunLogEventStream();
+  if (state.activeView !== "runs") {
+    return;
+  }
+  const baseUrl = api.getDaemonBaseUrl?.();
+  if (!baseUrl) {
+    return;
+  }
+  runLogEventSource = new EventSource(`${baseUrl}/v1/run-logs/events`);
+  runLogEventSource.addEventListener("runs", () => {
+    if (document.visibilityState !== "visible" || state.activeView !== "runs") {
+      return;
+    }
+    loadRunLogs().catch(() => {});
+  });
+  runLogEventSource.onerror = () => {
+    if (document.visibilityState !== "visible" || state.activeView !== "runs") {
+      stopRunLogEventStream();
+      return;
+    }
+    if (!runLogEventReconnectTimer) {
+      runLogEventReconnectTimer = window.setTimeout(() => {
+        runLogEventReconnectTimer = null;
+        startRunLogEventStream();
+      }, 2000);
+    }
+  };
+}
+
 function stopDesktopMessagePolling() {
   if (desktopMessagePollTimer) {
     window.clearInterval(desktopMessagePollTimer);
     desktopMessagePollTimer = null;
   }
+}
+
+function stopDesktopMessageEventStream() {
+  clearDesktopMessageEventReconnectTimer();
+  if (desktopMessageEventSource) {
+    desktopMessageEventSource.close();
+    desktopMessageEventSource = null;
+  }
+}
+
+function startDesktopMessageEventStream() {
+  stopDesktopMessageEventStream();
+  if (state.activeView !== "chat") {
+    return;
+  }
+  const baseUrl = api.getDaemonBaseUrl?.();
+  if (!baseUrl) {
+    return;
+  }
+  const query = new URLSearchParams({ session_id: DEFAULT_CHAT_SESSION_ID });
+  desktopMessageEventSource = new EventSource(`${baseUrl}/v1/desktop-messages/events?${query.toString()}`);
+  desktopMessageEventSource.addEventListener("desktop", () => {
+    if (document.visibilityState !== "visible" || state.activeView !== "chat") {
+      return;
+    }
+    loadDesktopMessages().catch(() => {});
+  });
+  desktopMessageEventSource.onerror = () => {
+    if (document.visibilityState !== "visible" || state.activeView !== "chat") {
+      stopDesktopMessageEventStream();
+      return;
+    }
+    if (!desktopMessageEventReconnectTimer) {
+      desktopMessageEventReconnectTimer = window.setTimeout(() => {
+        desktopMessageEventReconnectTimer = null;
+        startDesktopMessageEventStream();
+      }, 2000);
+    }
+  };
 }
 
 function startDesktopMessagePolling() {
@@ -303,25 +532,21 @@ function startDesktopMessagePolling() {
       return;
     }
     loadDesktopMessages().catch(() => {});
-  }, 1000);
+  }, 5000);
 }
 
 function startRunLogPolling() {
   stopRunLogPolling();
-  if (!["runs", "diagnostics"].includes(state.activeView)) {
+  if (state.activeView !== "runs") {
     return;
   }
 
   runLogPollTimer = window.setInterval(() => {
-    if (document.visibilityState !== "visible" || !["runs", "diagnostics"].includes(state.activeView)) {
+    if (document.visibilityState !== "visible" || state.activeView !== "runs") {
       return;
     }
-    if (state.activeView === "runs") {
-      loadRunLogs().catch(() => {});
-      return;
-    }
-    loadDaemonPlane().catch(() => {});
-  }, 1000);
+    loadRunLogs().catch(() => {});
+  }, 5000);
 }
 
 function stopSlackRetrieveOauthPolling() {
@@ -409,6 +634,18 @@ async function loadFullDiskAccessStatus() {
   renderDesktopState();
 }
 
+async function loadScreenRecordingAccessStatus() {
+  try {
+    state.screenRecordingAccess = await api.getScreenRecordingAccessStatus();
+  } catch {
+    state.screenRecordingAccess = {
+      supported: true,
+      status: "unknown",
+    };
+  }
+  renderDesktopState();
+}
+
 async function loadAppMeta() {
   try {
     state.appMeta = await api.getAppMeta();
@@ -419,6 +656,10 @@ async function loadAppMeta() {
 }
 
 async function loadUpdaterState() {
+  if (updaterStateLoading) {
+    return;
+  }
+  updaterStateLoading = true;
   try {
     state.updater = await api.getUpdaterState();
   } catch {
@@ -429,6 +670,8 @@ async function loadUpdaterState() {
       progress: 0,
       message: "",
     };
+  } finally {
+    updaterStateLoading = false;
   }
   renderDesktopState();
 }
@@ -485,6 +728,10 @@ async function loadRunLogs() {
 }
 
 async function loadRecentRunLogs() {
+  if (runLogsLoading) {
+    return;
+  }
+  runLogsLoading = true;
   try {
     const response = await api.getRunLogs(50);
     state.runLogs = response.logs || [];
@@ -495,11 +742,17 @@ async function loadRecentRunLogs() {
     state.runLogs = [];
     state.runLogFile = "";
     state.runLogError = error.message;
+  } finally {
+    runLogsLoading = false;
     renderRunLogsState(state);
   }
 }
 
 async function loadDaemonPlane() {
+  if (daemonPlaneLoading) {
+    return;
+  }
+  daemonPlaneLoading = true;
   try {
     const [resourcesResponse, eventsResponse] = await Promise.all([
       api.getResources(),
@@ -519,16 +772,24 @@ async function loadDaemonPlane() {
     state.daemonEvents = [];
     state.daemonEventFile = "";
     state.daemonEventError = error.message;
+  } finally {
+    daemonPlaneLoading = false;
     renderDaemonPlaneState(state);
   }
 }
 
 async function loadDesktopMessages() {
+  if (desktopMessagesLoading) {
+    return;
+  }
+  desktopMessagesLoading = true;
   try {
     const response = await api.getDesktopMessages(DEFAULT_CHAT_SESSION_ID);
     appendDesktopMessages(state, response.messages || []);
   } catch {
     // Ignore transient desktop inbox errors so Talk remains usable.
+  } finally {
+    desktopMessagesLoading = false;
   }
 }
 
@@ -701,6 +962,7 @@ function bindActions() {
       state.activeView = viewName;
       if (viewName === "settings") {
         loadFullDiskAccessStatus().catch(() => {});
+        loadScreenRecordingAccessStatus().catch(() => {});
       }
       if (viewName === "skills") {
         loadSkills().catch(() => {});
@@ -722,10 +984,17 @@ function bindActions() {
       } else {
         stopRunLogPolling();
       }
+      if (viewName === "runs") {
+        startRunLogEventStream();
+      } else {
+        stopRunLogEventStream();
+      }
       if (viewName === "chat") {
         startDesktopMessagePolling();
+        startDesktopMessageEventStream();
       } else {
         stopDesktopMessagePolling();
+        stopDesktopMessageEventStream();
       }
       if (viewName === "overview") {
         startUpdaterPolling();
@@ -808,6 +1077,19 @@ function bindActions() {
     }
   });
   document.getElementById("relaunch-app")?.addEventListener("click", async () => {
+    setSettingsStatus(t("status.relaunchingApp"));
+    await api.relaunchApp();
+  });
+  document.getElementById("open-screen-recording-settings")?.addEventListener("click", async () => {
+    setSettingsStatus(t("status.openingScreenRecordingSettings"));
+    try {
+      await api.openScreenRecordingSettings();
+      setSettingsStatus(t("status.screenRecordingSettingsOpened"));
+    } catch (error) {
+      setSettingsStatus(t("status.screenRecordingSettingsFailed", { message: error.message }));
+    }
+  });
+  document.getElementById("relaunch-app-screen-recording")?.addEventListener("click", async () => {
     setSettingsStatus(t("status.relaunchingApp"));
     await api.relaunchApp();
   });
@@ -916,12 +1198,22 @@ function bindActions() {
   });
 
   window.addEventListener("focus", () => {
+    startRuntimeEventStream();
+    startRunLogEventStream();
+    startDesktopMessageEventStream();
     refreshActiveView().catch(() => {});
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
+      startRuntimeEventStream();
+      startRunLogEventStream();
+      startDesktopMessageEventStream();
       refreshActiveView().catch(() => {});
+      return;
     }
+    stopRuntimeEventStream();
+    stopRunLogEventStream();
+    stopDesktopMessageEventStream();
   });
 }
 
@@ -946,6 +1238,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   await refreshActiveView();
   await loadRunLogs();
   await loadDaemonPlane();
+  startRuntimeEventStream();
+  startRunLogEventStream();
+  startDesktopMessageEventStream();
   startUpdaterPolling();
   startRunLogPolling();
   startDesktopMessagePolling();

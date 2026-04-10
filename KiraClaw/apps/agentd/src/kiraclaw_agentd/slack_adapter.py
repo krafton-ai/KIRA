@@ -263,6 +263,9 @@ class SlackGateway:
         self.app: AsyncApp | None = None
         self.handler: AsyncSocketModeHandler | None = None
         self._runner_task: asyncio.Task[None] | None = None
+        self._recovery_task: asyncio.Task[None] | None = None
+        self._stopping: bool = False
+        self._reconnect_delay_seconds: float = 2.0
         self.state: str = "not_configured"
         self.last_error: str | None = None
         self.identity: dict[str, str] = {}
@@ -320,6 +323,40 @@ class SlackGateway:
         )
         self._register_handlers()
 
+    async def _reset_socket_runtime(self) -> None:
+        runner = self._runner_task
+        self._runner_task = None
+        if runner is not None and not runner.done():
+            runner.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await runner
+
+        if self.handler is not None:
+            with contextlib.suppress(Exception):
+                await self.handler.close_async()
+            self.handler = None
+
+        self.app = None
+        self.socket_mode_validated = False
+
+    async def _recover_after_failure(self) -> None:
+        await asyncio.sleep(max(0.1, float(self._reconnect_delay_seconds)))
+        if self._stopping or not self.configured:
+            return
+        logger.info("Attempting to recover Slack gateway socket mode connection")
+        await self.start()
+
+    def _schedule_recovery(self) -> None:
+        if self._stopping or not self.configured:
+            return
+        if self._recovery_task is not None and not self._recovery_task.done():
+            return
+        self.state = "reconnecting"
+        self._recovery_task = asyncio.create_task(
+            self._recover_after_failure(),
+            name="slack-socket-mode-recovery",
+        )
+
     async def _validate_tokens(self) -> None:
         if self.app is None:
             raise RuntimeError("Slack app is not available")
@@ -339,8 +376,15 @@ class SlackGateway:
             raise RuntimeError(socket_mode_resp.get("error", "Socket Mode validation failed"))
 
     def _handle_runner_done(self, task: asyncio.Task[None]) -> None:
+        if task is not self._runner_task:
+            return
+        self._runner_task = None
         if task.cancelled():
-            if self.state != "stopped":
+            if self._stopping:
+                self.state = "stopped"
+            elif self.configured:
+                self.state = "configured"
+            else:
                 self.state = "stopped"
             return
 
@@ -349,14 +393,23 @@ class SlackGateway:
             self.state = "failed"
             self.last_error = str(error)
             logger.error("Slack gateway stopped with an error: %s", error)
-        elif self.state != "stopped":
+            self._schedule_recovery()
+        elif not self._stopping:
             self.state = "stopped"
+            self._schedule_recovery()
 
     async def start(self) -> None:
         if not self.configured:
             self.state = "not_configured"
             logger.info("Slack gateway is not configured; skipping startup")
             return
+        self._stopping = False
+        if self._recovery_task is not None and not self._recovery_task.done():
+            self._recovery_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._recovery_task
+        self._recovery_task = None
+        await self._reset_socket_runtime()
         self._ensure_app()
         if self.app is None:
             logger.warning("Slack gateway requested to start without an app")
@@ -365,14 +418,11 @@ class SlackGateway:
             return
         self.state = "starting"
         self.last_error = None
-        self.socket_mode_validated = False
         try:
             await self._validate_tokens()
-            if self.handler is None:
-                self.handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
-            if self._runner_task is None or self._runner_task.done():
-                self._runner_task = asyncio.create_task(self.handler.start_async(), name="slack-socket-mode")
-                self._runner_task.add_done_callback(self._handle_runner_done)
+            self.handler = AsyncSocketModeHandler(self.app, self.settings.slack_app_token)
+            self._runner_task = asyncio.create_task(self.handler.start_async(), name="slack-socket-mode")
+            self._runner_task.add_done_callback(self._handle_runner_done)
             self.state = "running"
             logger.info("Slack gateway started")
         except Exception as error:
@@ -381,15 +431,14 @@ class SlackGateway:
             logger.exception("Slack gateway failed to start")
 
     async def stop(self) -> None:
+        self._stopping = True
         await self._debouncer.stop()
-        if self._runner_task and not self._runner_task.done():
-            self._runner_task.cancel()
+        if self._recovery_task is not None and not self._recovery_task.done():
+            self._recovery_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await self._runner_task
-        if self.handler is not None:
-            with contextlib.suppress(Exception):
-                await self.handler.close_async()
-            self.handler = None
+                await self._recovery_task
+        self._recovery_task = None
+        await self._reset_socket_runtime()
         if self.configured:
             self.state = "configured"
         else:
