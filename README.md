@@ -129,8 +129,7 @@ If you found Terminus-KIRA useful, please cite us as:
 }
 ```
 
-> [!NOTE]
-> **TerminalBench Submission Correspondence**
+> **Note:** TerminalBench Submission Correspondence
 >
 > The agent used for the official TerminalBench submission was logged under the internal path
 > `kraftonai-terminus/terminal_bench/agents/terminus_3/terminus_3_3.py`.
