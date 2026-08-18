@@ -253,9 +253,10 @@ class TerminusKira(Terminus2):
                 block=False,
                 min_timeout_sec=0.0,
             )
-            # Send marker: will execute when shell returns after command
+            # Send marker: will execute when shell returns after command.
+            # Leading newline guards against keystrokes missing theirs (#67).
             await session.send_keys(
-                f"echo '{marker}'\n",
+                f"\n echo '{marker}'\n",
                 block=False,
                 min_timeout_sec=0.0,
             )
