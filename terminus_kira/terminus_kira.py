@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import jsonschema
 import litellm
 from litellm.exceptions import (
     AuthenticationError as LiteLLMAuthenticationError,
@@ -411,6 +412,22 @@ class TerminusKira(Terminus2):
                 self.logger.warning(f"Failed to parse tool arguments: {arguments_str}")
                 continue
 
+            # Reject malformed structured output instead of silently accepting defaults.
+            schema = next(
+                (t["function"]["parameters"] for t in TOOLS if t["function"]["name"] == function_name),
+                None,
+            )
+            if schema is not None:
+                try:
+                    jsonschema.validate(arguments, schema)
+                except jsonschema.ValidationError as e:
+                    feedback = (
+                        f"WARNINGS: Invalid arguments for '{function_name}': "
+                        f"{e.message}. Nothing was executed."
+                    )
+                    self.logger.warning(feedback)
+                    continue
+
             if function_name == "execute_commands":
                 # Extract analysis and plan
                 analysis = arguments.get("analysis", "")
@@ -419,11 +436,10 @@ class TerminusKira(Terminus2):
                 # Extract commands array
                 cmds = arguments.get("commands", [])
                 for cmd in cmds:
-                    keystrokes = cmd.get("keystrokes", "")
                     duration = cmd.get("duration", 1.0)
                     commands.append(
                         Command(
-                            keystrokes=keystrokes,
+                            keystrokes=cmd["keystrokes"],
                             duration_sec=min(duration, 60),
                         )
                     )
